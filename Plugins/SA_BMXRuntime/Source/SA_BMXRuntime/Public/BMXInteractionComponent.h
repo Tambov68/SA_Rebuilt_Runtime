@@ -77,8 +77,8 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="BMX|Debug") int32 RideBlockedFrames = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="BMX|Debug") FString LastRideBlock;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Hop", meta=(ClampMin="0.1", ClampMax="2")) float MaxHopCharge = 0.65f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Hop") float MinHopVelocity = 250.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Hop") float MaxHopVelocity = 380.f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Hop") float MinHopVelocity = 300.f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Hop") float MaxHopVelocity = 450.f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="BMX|Hop") EBMXHopState HopState = EBMXHopState::Grounded;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="BMX|Hop") float HopCharge = 0.f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="BMX|Hop") FVector HopVelocity = FVector::ZeroVector;

@@ -18,6 +18,9 @@
 #include "InputCoreTypes.h"
 #include "Math/RotationMatrix.h"
 #include "UObject/UnrealType.h"
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
 
 namespace
 {
@@ -47,6 +50,20 @@ FQuat GroundRotation(const FVector& Forward, const FVector& Normal)
     X.Z=-(X.X*Normal.X+X.Y*Normal.Y)/FMath::Max(Normal.Z,0.1f);
     X.Normalize();
     return FRotationMatrix::MakeFromXZ(X,Normal).ToQuat();
+}
+// Separate horizontal surfaces must not be interpreted as a connecting ramp.
+bool CoherentWheelSupport(const FHitResult& Front, const FHitResult& Rear)
+{
+    const FVector Span=Front.Location-Rear.Location;
+    return FVector::DotProduct(Front.ImpactNormal,Rear.ImpactNormal)>0.7f
+        && FMath::Abs(FVector::DotProduct(Span,Front.ImpactNormal))<=12.f
+        && FMath::Abs(FVector::DotProduct(Span,Rear.ImpactNormal))<=12.f;
+}
+float HopPitch(float Time)
+{
+    // Lift the front first, then bring the rear up and level for landing.
+    if (Time<0.16f) return 18.f*FMath::Clamp(Time/0.16f,0.f,1.f);
+    return 18.f*(1.f-FMath::Clamp((Time-0.16f)/0.24f,0.f,1.f));
 }
 FVector SupportedRoot(FVector Position, const FHitResult& Ground)
 {
@@ -416,6 +433,7 @@ bool UBMXInteractionComponent::TriggerCrash(FVector ImpactVelocity,FVector HitLo
     const FVector BaseVelocity=HopState==EBMXHopState::Airborne?HopVelocity:Bike->GetActorForwardVector()*RideSpeed;
     const FVector ReleasedVelocity=(BaseVelocity+ImpactVelocity).GetClampedToMaxSize(1200.f);
     Frame->OnComponentHit.RemoveDynamic(this,&UBMXInteractionComponent::OnBikeHit);
+    UE_LOG(LogTemp,Display,TEXT("BMXHop: rider released at=%s velocity=%s hopState=%d"),*HitLocation.ToCompactString(),*BaseVelocity.ToCompactString(),static_cast<int32>(HopState));
     State=EBMXState::Ragdoll;CurrentBike=nullptr;RagdollTime=0.f;RagdollRestTime=0.f;++CrashCount;
     C->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
     Mesh->RemoveTickPrerequisiteComponent(this);
@@ -527,25 +545,27 @@ void UBMXInteractionComponent::AirTick(float DeltaTime)
     HopVelocity.Z+=Gravity*DeltaTime;
     const FRotator Start=HopStartRotation.Rotator();
     const float Blend=FMath::Clamp(HopAirTime/0.3f,0.f,1.f);
-    const float LiftPitch=8.f*FMath::Sin(PI*FMath::Clamp(HopAirTime/0.4f,0.f,1.f));
-    const FQuat Rotation=FRotator(Start.Pitch*(1.f-Blend)+LiftPitch,Start.Yaw,Start.Roll*(1.f-Blend)).Quaternion();
+    const float LiftPitch=HopPitch(HopAirTime);
+    const FQuat Rotation=FRotator(FMath::Clamp(Start.Pitch,-25.f,25.f)*(1.f-Blend)+LiftPitch,Start.Yaw,FMath::Clamp(Start.Roll,-20.f,20.f)*(1.f-Blend)).Quaternion();
     FCollisionQueryParams Q(SCENE_QUERY_STAT(BMXHopLanding),false,GetOwner());Q.AddIgnoredActor(CurrentBike);
     FHitResult Front,Rear;
     const float MinNormalZ=FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(MaxRideSlopeDegrees,35.f,80.f)));
     const auto Support=[&](float X,FHitResult& H)
     {
         const FVector P=Position+Rotation.RotateVector(FVector(X,0,-27.03f));
-        return GetWorld()->SweepSingleByChannel(H,P+FVector::UpVector*90.f,P-FVector::UpVector*500.f,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(28.4f),Q)
+        const FVector OldAxle=Previous+CurrentBike->GetActorQuat().RotateVector(FVector(X,0,-27.03f));
+        const FVector TraceStart(P.X,P.Y,FMath::Max(P.Z,OldAxle.Z)+4.f);
+        return GetWorld()->SweepSingleByChannel(H,TraceStart,P-FVector::UpVector*500.f,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(28.4f),Q)
             &&!H.bStartPenetrating&&H.ImpactNormal.Z>=MinNormalZ;
     };
     const bool HasFront=Support(47.36f,Front),HasRear=Support(-46.34f,Rear);
     bool bLanding=false;
-    if (HopVelocity.Z<=0.f&&HasFront&&HasRear)
+    if (HopVelocity.Z<=0.f&&HasFront&&HasRear&&CoherentWheelSupport(Front,Rear))
     {
         const auto RootZ=[&](float X,const FHitResult& H)
         {return H.Location.Z-Rotation.RotateVector(FVector(X,0,-27.03f)).Z+WheelContactClearance/FMath::Max(H.ImpactNormal.Z,0.3f);};
         const float FloorZ=FMath::Max(RootZ(47.36f,Front),RootZ(-46.34f,Rear));
-        if (Position.Z<=FloorZ+0.5f)
+        if (Position.Z<=FloorZ+0.5f&&FloorZ<=Previous.Z+4.f)
         {
             Position.Z=FloorZ+0.25f;
             bLanding=BikePoseClear(CurrentBike,FTransform(Rotation,Position,CurrentBike->GetActorScale3D()));
@@ -565,10 +585,19 @@ void UBMXInteractionComponent::AirTick(float DeltaTime)
         RideSpeed=FMath::Min(HopVelocity.Size2D(),FMath::Max(MaxRideSpeed,MaxSprintSpeed))*(RideSpeed<0.f?-1.f:1.f);
         HopVelocity=FVector::ZeroVector;HopCharge=0.f;
         LastStatus=TEXT("Hop landed: ground control restored");
+        UE_LOG(LogTemp,Display,TEXT("BMXHop: landed height=%.1f time=%.2f front=%s rear=%s"),LastHopHeight,HopAirTime,*GetNameSafe(Front.GetActor()),*GetNameSafe(Rear.GetActor()));
     }
     else
     {
-        if (Hit.bBlockingHit) HopVelocity=FVector::VectorPlaneProject(HopVelocity,Hit.ImpactNormal);
+        if (Hit.bBlockingHit)
+        {
+            // Unsupported obstacle contact must not cancel gravity forever.
+            if (Hit.ImpactNormal.Z>=MinNormalZ && HopVelocity.Z<=0.f)
+                if (TriggerCrash(FVector::ZeroVector,Hit.ImpactPoint)) return;
+            const float FallingSpeed=HopVelocity.Z;
+            HopVelocity=FVector::VectorPlaneProject(HopVelocity,Hit.ImpactNormal);
+            if (Hit.ImpactNormal.Z<MinNormalZ) HopVelocity.Z=FMath::Min(HopVelocity.Z,FallingSpeed);
+        }
         LastStatus=Hit.bBlockingHit?TEXT("Airborne: contact blocked, landing support pending"):TEXT("Airborne: ballistic hop, feet held on pedals");
     }
 }
@@ -620,6 +649,7 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
             HopVelocity=CurrentBike->GetActorForwardVector()*RideSpeed;
             HopVelocity.Z=FMath::Max(0.f,HopVelocity.Z)+FMath::Lerp(MinHopVelocity,MaxHopVelocity,FMath::Clamp(HopCharge/FMath::Max(MaxHopCharge,0.1f),0.f,1.f));
             HopState=EBMXHopState::Airborne;HopAirTime=0.f;HopStart=CurrentBike->GetActorLocation();HopStartRotation=CurrentBike->GetActorQuat();LastHopHeight=0.f;++HopCount;
+            UE_LOG(LogTemp,Display,TEXT("BMXHop: takeoff charge=%.2f velocity=%s"),HopCharge,*HopVelocity.ToCompactString());
             WheelieDegrees=0.f;StoppieDegrees=0.f;WheelieRootOffset=FVector::ZeroVector;LastWheelie=false;LastStoppie=false;
             if (Character.IsValid()) Character->SetActorRelativeLocation(RiderSeatLocation);
             bJumpWasDown=Jump;AirTick(DeltaTime);if(IsMounted())UpdateRiderMotion(DeltaTime);return;
@@ -672,7 +702,7 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
     };
     const auto SampleSupport=[&]()
     {
-        if (!Probe(47.36f,Front)||!Probe(-46.34f,Rear)) return false;
+        if (!Probe(47.36f,Front)||!Probe(-46.34f,Rear)||!CoherentWheelSupport(Front,Rear)) return false;
         const FVector AverageNormal=(Front.ImpactNormal+Rear.ImpactNormal).GetSafeNormal();
         const FVector Right=FVector::CrossProduct(AverageNormal,Rotation.GetForwardVector()).GetSafeNormal();
         // Sweep Location is the tyre centre at contact, unlike ImpactPoint.
@@ -686,7 +716,15 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
         // Refuse the unsupported next step, then lower the stunt at the still-supported current base.
         Position=PreviousPosition;
         RideSpeed=0.f;LastWheelie=false;LastStoppie=false;StoppieTime=0.f;
-        if (!SampleSupport()) {LastStatus=TEXT("Stopped: current wheel support lost; recovery required");return;}
+        if (!SampleSupport())
+        {
+            // Lost support starts a fall rather than freezing the mounted pose.
+            HopState=EBMXHopState::Airborne;HopAirTime=0.f;
+            HopVelocity=FVector::ZeroVector;HopStart=CurrentBike->GetActorLocation();
+            HopStartRotation=CurrentBike->GetActorQuat();
+            WheelieDegrees=0.f;StoppieDegrees=0.f;WheelieRootOffset=FVector::ZeroVector;
+            AirTick(DeltaTime);if(IsMounted())UpdateRiderMotion(DeltaTime);return;
+        }
         bSupportStopped=true;
     }
     const FVector Heading=Rotation.GetForwardVector().GetSafeNormal2D();
@@ -831,3 +869,26 @@ void UBMXInteractionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
     if (bMoveIgnoreAdded && PlayerController.IsValid()) PlayerController->SetIgnoreMoveInput(false);
     Super::EndPlay(EndPlayReason);
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBMXSupportRegression,"SA.BMX.Hop.SupportAndPitch",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FBMXSupportRegression::RunTest(const FString& Parameters)
+{
+    FHitResult Front,Rear;
+    Front.ImpactNormal=Rear.ImpactNormal=FVector::UpVector;
+    Front.Location=FVector(47.36f,0,28.4f);Rear.Location=FVector(-46.34f,0,28.4f);
+    TestTrue(TEXT("Flat ground supported"),CoherentWheelSupport(Front,Rear));
+    Front.Location.Z+=45.f;
+    TestFalse(TEXT("Bench seat and ground are not a ramp"),CoherentWheelSupport(Front,Rear));
+    Front.Location.Z+=45.f;
+    TestFalse(TEXT("Bench back and ground are not a ramp"),CoherentWheelSupport(Front,Rear));
+    Front.Location=Rear.Location+FVector(1,0,1).GetSafeNormal()*93.7f;
+    Front.ImpactNormal=Rear.ImpactNormal=FVector(-1,0,1).GetSafeNormal();
+    TestTrue(TEXT("Continuous 45 degree ramp supported"),CoherentWheelSupport(Front,Rear));
+    TestEqual(TEXT("Takeoff level"),HopPitch(0.f),0.f);
+    TestEqual(TEXT("Front lift limited"),HopPitch(0.16f),18.f);
+    TestEqual(TEXT("Bike levels after rear lift"),HopPitch(0.4f),0.f);
+    TestEqual(TEXT("Landing level"),HopPitch(1.f),0.f);
+    return true;
+}
+#endif
