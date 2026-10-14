@@ -22,7 +22,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") float CarFOV=78.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") float BikeFOV=88.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") FVector EyeOffset=FVector(10.f,0.f,4.f);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") FVector CarSeatedEyeOffset=FVector(8.f,0.f,53.f);
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") FVector CarSeatedEyeOffset=FVector(-2.f,0.f,63.f);
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera", meta=(ClampMin="0")) float LookSensitivity=2.5f;
     bool WantsFirstPerson() const { return bPreferFirstPerson; }
     FRotator GetLookRotation() const { return LastViewRotation; }
