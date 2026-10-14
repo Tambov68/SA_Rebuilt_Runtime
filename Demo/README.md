@@ -59,6 +59,11 @@ not bundled here. The bicycle's collision ignores the Camera trace channel,
 so it does not retract the demo spring arm into the rider; world obstacles
 still participate in camera collision.
 
+`DemoRiderAnimClass` is used only while mounted. Hosts can also configure
+`DemoIdleAnimation` and `DemoWalkAnimation` in the same section to supply compatible
+on-foot clips. The demo selects walk from horizontal speed, restores on-foot
+playback after dismount, and does not implement a full locomotion blend tree.
+
 The code uses transient copies of engine primitive meshes to attach sockets;
 the installed Engine assets are never saved or modified. Editor/Game compilation
 results are recorded in the main README. Interactive PIE behavior must still be

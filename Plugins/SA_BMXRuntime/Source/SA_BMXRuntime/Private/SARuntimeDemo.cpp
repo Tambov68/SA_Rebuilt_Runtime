@@ -1,6 +1,7 @@
 #include "SARuntimeDemo.h"
 #include "BMXInteractionComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimSingleNodeInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -114,8 +115,10 @@ void ASADemoCharacter::BeginPlay()
     if(UClass* AnimClass=DemoRiderAnimClass.LoadSynchronous())
     {
         Interaction->RiderAnimClass=AnimClass;
-        GetMesh()->SetAnimInstanceClass(AnimClass);
     }
+    IdleAnimation=DemoIdleAnimation.LoadSynchronous();
+    WalkAnimation=DemoWalkAnimation.LoadSynchronous();
+    if(IdleAnimation) GetMesh()->PlayAnimation(IdleAnimation,true);
 }
 
 void ASADemoCharacter::Tick(float DT)
@@ -126,6 +129,9 @@ void ASADemoCharacter::Tick(float DT)
     Placeholder->SetRelativeLocation(Mounted?FVector(0,0,25):FVector::ZeroVector);
     if(!Mounted)
     {
+        UAnimationAsset* Desired=GetVelocity().SizeSquared2D()>9.f&&WalkAnimation?WalkAnimation.Get():IdleAnimation.Get();
+        auto* Single=GetMesh()->GetSingleNodeInstance();
+        if(Desired&&(!Single||Single->GetCurrentAsset()!=Desired)) GetMesh()->PlayAnimation(Desired,true);
         const FRotator Heading(0,PC->GetControlRotation().Yaw,0);
         AddMovementInput(Heading.Vector(),(PC->IsInputKeyDown(EKeys::W)?1.f:0.f)-(PC->IsInputKeyDown(EKeys::S)?1.f:0.f));
         AddMovementInput(FRotationMatrix(Heading).GetUnitAxis(EAxis::Y),(PC->IsInputKeyDown(EKeys::D)?1.f:0.f)-(PC->IsInputKeyDown(EKeys::A)?1.f:0.f));
