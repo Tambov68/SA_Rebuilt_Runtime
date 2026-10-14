@@ -1,7 +1,6 @@
 #include "SARideCameraComponent.h"
 #include "BMXInteractionComponent.h"
 #include "SAVehicleInteractionComponent.h"
-#include "SAPhotoModeSubsystem.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/InputComponent.h"
@@ -52,8 +51,6 @@ void USARideCameraComponent::ToggleView()
 {
     if(Character.IsValid())if(auto* Car=Character->FindComponentByClass<USAVehicleInteractionComponent>())
         if(Car->State==ESAVehicleInteractionState::Entering||Car->State==ESAVehicleInteractionState::Exiting)return;
-    auto* Photo=GetWorld()->GetSubsystem<USAPhotoModeSubsystem>();
-    if(Photo&&Photo->IsActive())return;
     if(bFirstPerson){bPreferFirstPerson=false;LeaveView(true);return;}
     AActor* Ride=RideTarget();if(!Ride)return;
     bPreferFirstPerson=true;EnterView(Ride);
@@ -106,37 +103,33 @@ void USARideCameraComponent::LeaveView(bool bRestoreTarget)
     bFirstPerson=false;Target.Reset();PreviousView.Reset();bWasTransition=false;
     SmoothedEye=FVector::ZeroVector;NeckEyeOffset=FVector::ZeroVector;Anchor=FVector::ZeroVector;
 }
-void USARideCameraComponent::LookYaw(float V){auto* P=GetWorld()->GetSubsystem<USAPhotoModeSubsystem>();if(bFirstPerson&&(!P||!P->IsActive()))LookX=FMath::Clamp(LookX+V*.65f,-110.f,110.f);}
-void USARideCameraComponent::LookPitch(float V){auto* P=GetWorld()->GetSubsystem<USAPhotoModeSubsystem>();if(bFirstPerson&&(!P||!P->IsActive()))LookY=FMath::Clamp(LookY-V*.65f,-65.f,45.f);}
+void USARideCameraComponent::LookYaw(float V){if(bFirstPerson)LookX=FMath::Clamp(LookX+V*.65f,-110.f,110.f);}
+void USARideCameraComponent::LookPitch(float V){if(bFirstPerson)LookY=FMath::Clamp(LookY-V*.65f,-65.f,45.f);}
 void USARideCameraComponent::TickComponent(float DT,ELevelTick Type,FActorComponentTickFunction* F)
 {
     Super::TickComponent(DT,Type,F);InstallInput();
-    auto* Photo=GetWorld()->GetSubsystem<USAPhotoModeSubsystem>();
-    const bool bPhoto=Photo&&Photo->IsActive();
     if(Character.IsValid())if(auto* Car=Character->FindComponentByClass<USAVehicleInteractionComponent>())Car->UpdateAnimationCamera();
-    if(!bFirstPerson&&bPreferFirstPerson&&!bPhoto)if(AActor* Ride=RideTarget())EnterView(Ride);
+    if(!bFirstPerson&&bPreferFirstPerson)if(AActor* Ride=RideTarget())EnterView(Ride);
     const bool bEligible=RideTarget()!=nullptr;
     if(RideInput)
     {
-        RideInput->KeyBindings[0].bConsumeInput=bEligible&&!bPhoto;
-        for(auto& Binding:RideInput->AxisKeyBindings)Binding.bConsumeInput=bFirstPerson&&!bPhoto;
+        RideInput->KeyBindings[0].bConsumeInput=bEligible;
+        for(auto& Binding:RideInput->AxisKeyBindings)Binding.bConsumeInput=bFirstPerson;
     }
     if(!bFirstPerson)return;
     if(!Target.IsValid()||RideTarget()!=Target.Get())
     {
         // A normal bicycle dismount does not assign a new view target.
         // Restore it only while this camera still owns the view; preserve any
-        // transition or photo camera another system has already selected.
-        const bool Restore=!bPhoto&&Controller.IsValid()&&Controller->GetViewTarget()==Camera;
+        // transition camera another system has already selected.
+        const bool Restore=Controller.IsValid()&&Controller->GetViewTarget()==Camera;
         if(Restore)Controller->SetControlRotation(LastViewRotation);
         LeaveView(Restore);return;
     }
     if(!bHeadWasHidden)
     {
-        if(bPhoto)Character->GetMesh()->UnHideBoneByName(TEXT("head"));
-        else Character->GetMesh()->HideBoneByName(TEXT("head"),EPhysBodyOp::PBO_None);
+        Character->GetMesh()->HideBoneByName(TEXT("head"),EPhysBodyOp::PBO_None);
     }
-    if(bPhoto)return;
     const FTransform RideTransform=Target->GetActorTransform();
     const FVector AnimatedEye=Character->GetMesh()->GetSocketTransform(TEXT("neck_01")).TransformPosition(NeckEyeOffset);
     FVector LocalEye=RideTransform.InverseTransformPosition(AnimatedEye);
