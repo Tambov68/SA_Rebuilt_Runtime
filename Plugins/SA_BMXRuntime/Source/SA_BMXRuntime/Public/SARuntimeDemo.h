@@ -50,4 +50,5 @@ public:
     ASARuntimeDemoMode();
     virtual void StartPlay() override;
     UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftClassPtr<AActor> DemoBikeClass;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") bool bSpawnDemoEnvironment=true;
 };

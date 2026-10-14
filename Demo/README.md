@@ -58,6 +58,9 @@ IK parameters expected by `UpdateRiderIK`. Third-party animation packages are
 not bundled here. The bicycle's collision ignores the Camera trace channel,
 so it does not retract the demo spring arm into the rider; world obstacles
 still participate in camera collision.
+For a host map with its own lighting and ground, set `bSpawnDemoEnvironment=False`
+under `[/Script/SA_BMXRuntime.SARuntimeDemoMode]` in `Config/DefaultGame.ini`.
+The built-in primitive floor and directional light are then skipped.
 
 `DemoRiderAnimClass` is used only while mounted. Hosts can also configure
 `DemoIdleAnimation` and `DemoWalkAnimation` in the same section to supply compatible

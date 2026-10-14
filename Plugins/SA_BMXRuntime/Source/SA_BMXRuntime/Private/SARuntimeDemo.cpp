@@ -145,12 +145,16 @@ ASARuntimeDemoMode::ASARuntimeDemoMode() {DefaultPawnClass=ASADemoCharacter::Sta
 void ASARuntimeDemoMode::StartPlay()
 {
     // Build the test ground before Super starts BeginPlay on actors.
+    if(bSpawnDemoEnvironment)
+    {
     auto* Floor=GetWorld()->SpawnActor<AActor>();
     auto* Ground=NewObject<UStaticMeshComponent>(Floor);
     Floor->SetRootComponent(Ground); Floor->AddInstanceComponent(Ground);
     Ground->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
     Ground->SetCollisionProfileName(TEXT("BlockAll"));Ground->RegisterComponent();
     Floor->SetActorLocation(FVector(0,0,-10));Floor->SetActorScale3D(FVector(40,40,.2));
+    GetWorld()->SpawnActor<ADirectionalLight>(FVector(0,0,400),FRotator(-45,-30,0));
+    }
     UClass* BikeClass=DemoBikeClass.LoadSynchronous();
     if(!BikeClass) BikeClass=ASADemoBike::StaticClass();
     if(auto* Bike=GetWorld()->SpawnActor<AActor>(BikeClass,FVector(170,0,54.55f),FRotator::ZeroRotator))
@@ -160,6 +164,5 @@ void ASARuntimeDemoMode::StartPlay()
         TArray<UPrimitiveComponent*> Parts; Bike->GetComponents(Parts);
         for(auto* Part:Parts) Part->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
     }
-    GetWorld()->SpawnActor<ADirectionalLight>(FVector(0,0,400),FRotator(-45,-30,0));
     Super::StartPlay();
 }
