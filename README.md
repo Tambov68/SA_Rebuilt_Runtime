@@ -15,11 +15,17 @@ It contains the runtime plugin, not the complete game or its asset library.
 
 1. Install Unreal Engine 5.8 and its supported C++ build tools.
 2. Create a C++ Unreal project, or use an existing compatible project.
-3. Obtain the NVIDIA DLSS plugin for your engine version from NVIDIA and install it separately.
-   DLSS is currently a required build dependency through `DLSSBlueprint`.
-4. Copy `Plugins/SA_BMXRuntime` into your project's `Plugins` directory.
-5. Enable `SA_BMXRuntime`, `ChaosVehiclesPlugin` and `DLSS` in your project.
-6. Regenerate project files, build your Editor target and open the project.
+3. Copy `Plugins/SA_BMXRuntime` into your project's `Plugins` directory.
+4. Enable `SA_BMXRuntime` and `ChaosVehiclesPlugin` in your project.
+5. Regenerate project files, build your Editor target and open the project.
+
+DLSS is optional. Default builds use Unreal's TSR path in photo mode and do not
+reference `DLSSBlueprint`. To opt in, install the matching NVIDIA DLSS plugin,
+enable it explicitly in your host project's `.uproject`, set the environment
+variable `SA_BMX_WITH_DLSS=1` in the process running UnrealBuildTool, and rebuild.
+For example, in PowerShell: `$env:SA_BMX_WITH_DLSS = '1'` before invoking the build.
+Unset the variable for a build without DLSS. Restart build processes that were
+started before changing the environment; the value is a build-time option.
 
 The plugin contains no binary assets. You must supply your own meshes, collision,
 character, animation Blueprint and vehicle setup. Compilation alone does not create a playable demo.
@@ -51,13 +57,14 @@ and mouse axes for looking. The implementation has state-dependent input behavio
 - Bicycle dimensions, support height and rider offsets are tuned for the original BMX;
   adapting a differently sized model requires checking these values and contacts.
 - Multiplayer, packaging and compatibility outside UE 5.8 are not verified.
-- This source snapshot is byte-identical to the private project's plugin.
-  The public package has not received a fresh independent build or PIE test.
+- The source edition diverges from the private plugin only in optional DLSS integration.
+  The public package has not received a fresh independent build or PIE test;
+  the compile guards and dependency declarations were checked statically.
 
 ## Useful first contributions
 
 - [ ] Add a minimal sample using original primitive meshes and a documented character/AnimBP setup.
-- [ ] Make DLSS optional, with a working non-DLSS path.
+- [ ] Validate both DLSS build configurations and the TSR photo-mode fallback in a clean host project.
 - [ ] Replace fixed component names and F40 asset paths with configurable references.
 - [ ] Document sockets, IK spaces and animation parameters with an integration example.
 - [ ] Add focused regressions for blocked dismount, slope support and input transitions.
@@ -80,4 +87,4 @@ with Rockstar Games, Take-Two Interactive, Epic Games or NVIDIA.
 
 Русский: это исходный код собственного игрового плагина, а не готовая игра.
 Полная рабочая версия и сторонние ассеты остаются приватными. Для запуска потребуются
-собственный проект UE 5.8, отдельно установленный DLSS и настройка персонажа/Blueprint.
+собственный проект UE 5.8 и настройка персонажа/Blueprint. DLSS необязателен.

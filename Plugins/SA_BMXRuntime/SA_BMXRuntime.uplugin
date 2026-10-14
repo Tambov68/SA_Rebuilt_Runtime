@@ -19,7 +19,8 @@
     },
     {
       "Name": "DLSS",
-      "Enabled": true
+      "Enabled": false,
+      "Optional": true
     }
   ]
 }

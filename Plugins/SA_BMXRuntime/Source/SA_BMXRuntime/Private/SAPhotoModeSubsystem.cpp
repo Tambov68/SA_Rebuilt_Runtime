@@ -1,7 +1,9 @@
 #include "SAPhotoModeSubsystem.h"
 #include "CineCameraActor.h"
 #include "CineCameraComponent.h"
+#if SA_BMX_WITH_DLSS
 #include "DLSSLibrary.h"
+#endif
 #include "ChaosVehicleMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/Engine.h"
@@ -200,6 +202,7 @@ void USAPhotoModeSubsystem::ApplyQuality()
     for(const TCHAR* N:{TEXT("sg.ViewDistanceQuality"),TEXT("sg.AntiAliasingQuality"),TEXT("sg.ShadowQuality"),TEXT("sg.GlobalIlluminationQuality"),TEXT("sg.ReflectionQuality"),TEXT("sg.PostProcessQuality"),TEXT("sg.TextureQuality"),TEXT("sg.EffectsQuality"),TEXT("sg.FoliageQuality"),TEXT("sg.ShadingQuality")})Set(N,bVideo?TEXT("3"):TEXT("4"));
     Set(TEXT("r.ScreenPercentage"),TEXT("100"));
     Set(TEXT("r.DynamicRes.OperationMode"),TEXT("0"));
+#if SA_BMX_WITH_DLSS
     const bool bDLSSSupported=UDLSSLibrary::IsDLSSSupported();
     if(bDLSSSupported)
     {
@@ -221,6 +224,7 @@ void USAPhotoModeSubsystem::ApplyQuality()
         else Status=TEXT("Фото · Cinematic · нативное разрешение");
     }
     else
+#endif
     {Set(TEXT("r.NGX.DLSS.Enable"),TEXT("0"));Set(TEXT("r.AntiAliasingMethod"),TEXT("4"));Status=bVideo?TEXT("Видео · Epic · TSR · DLSS недоступен"):TEXT("Фото · Cinematic · нативное разрешение");}
 }
 void USAPhotoModeSubsystem::RestoreQuality()
