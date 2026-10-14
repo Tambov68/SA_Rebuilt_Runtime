@@ -7,6 +7,7 @@ class ACameraActor;
 class ACharacter;
 class APlayerController;
 class UInputComponent;
+class USpringArmComponent;
 
 /** Local riding view independent of pawn possession. */
 UCLASS(ClassGroup=(Camera), meta=(BlueprintSpawnableComponent))
@@ -16,10 +17,13 @@ class SA_BMXRUNTIME_API USARideCameraComponent : public UActorComponent
 public:
     USARideCameraComponent();
     UFUNCTION(BlueprintCallable, Category="Ride Camera") void ToggleView();
+    UFUNCTION(BlueprintCallable, Category="Ride Camera") void ApplyLookInput(float YawInput, float PitchInput);
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Ride Camera") bool bFirstPerson=false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") float CarFOV=78.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") float BikeFOV=88.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") FVector EyeOffset=FVector(10.f,0.f,4.f);
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera") FVector CarSeatedEyeOffset=FVector(8.f,0.f,53.f);
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ride Camera", meta=(ClampMin="0")) float LookSensitivity=2.5f;
     bool WantsFirstPerson() const { return bPreferFirstPerson; }
     FRotator GetLookRotation() const { return LastViewRotation; }
 protected:
@@ -50,5 +54,12 @@ private:
     bool bWasTransition=false;
     bool bHasSavedLook=false;
     FRotator LastViewRotation=FRotator::ZeroRotator;
+    TWeakObjectPtr<AActor> SavedLookTarget;
+    float SavedLookX=0.f, SavedLookY=0.f;
+    TWeakObjectPtr<USpringArmComponent> OrbitArm;
+    FRotator SavedOrbitRotation=FRotator::ZeroRotator;
+    float OrbitYaw=0.f, OrbitPitch=0.f;
+    void UpdateOrbit(AActor* Ride);
+    void RestoreOrbit();
     void EnterView(AActor* Ride);
 };

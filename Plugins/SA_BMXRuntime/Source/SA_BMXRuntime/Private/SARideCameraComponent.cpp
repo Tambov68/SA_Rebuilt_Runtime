@@ -7,6 +7,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Engine/World.h"
 #include "InputCoreTypes.h"
 
@@ -64,12 +65,15 @@ void USARideCameraComponent::EnterView(AActor* Ride)
     if(!Camera)return;
     Target=Ride;PreviousView=Controller->GetPawn();
     bBike=Ride->FindComponentByClass<UBMXVehicleComponent>()!=nullptr;
-    const FRotator View=bHasSavedLook?LastViewRotation:Controller->GetControlRotation();
-    LookX=FMath::Clamp(FMath::FindDeltaAngleDegrees(Ride->GetActorRotation().Yaw,View.Yaw),-110.f,110.f);
-    LookY=FMath::Clamp(View.Pitch-Ride->GetActorRotation().Pitch,-65.f,45.f);
+    // Store gaze in vehicle space so turning the car outside the cockpit does
+    // not turn the driver's restored gaze toward an unrelated world heading.
+    LookX=bHasSavedLook&&SavedLookTarget.Get()==Ride?SavedLookX:0.f;
+    LookY=bHasSavedLook&&SavedLookTarget.Get()==Ride?SavedLookY:0.f;
     auto* Car=Character->FindComponentByClass<USAVehicleInteractionComponent>();
     bWasTransition=!bBike&&Car&&Car->State!=ESAVehicleInteractionState::Driving;
-    const FVector Eye=Mesh->GetSocketLocation(TEXT("head"))+Ride->GetActorQuat().RotateVector(EyeOffset);
+    const FVector Eye=(!bBike&&!bWasTransition)?
+        Mesh->GetSocketLocation(TEXT("pelvis"))+Ride->GetActorQuat().RotateVector(CarSeatedEyeOffset):
+        Mesh->GetSocketLocation(TEXT("head"))+Ride->GetActorQuat().RotateVector(EyeOffset);
     // Keep the car viewpoint rigidly in the cockpit. For BMX follow the neck,
     // which remains animated when the head is hidden from the local view.
     Anchor=bBike?Mesh->GetSocketTransform(TEXT("neck_01")).InverseTransformPosition(Eye):Ride->GetActorTransform().InverseTransformPosition(Eye);
@@ -88,7 +92,7 @@ void USARideCameraComponent::EnterView(AActor* Ride)
 void USARideCameraComponent::LeaveView(bool bRestoreTarget)
 {
     if(!bFirstPerson)return;
-    if(Camera){LastViewRotation=Camera->GetActorRotation();bHasSavedLook=true;}
+    if(Camera){LastViewRotation=Camera->GetActorRotation();bHasSavedLook=true;SavedLookX=LookX;SavedLookY=LookY;SavedLookTarget=Target;}
     if(Character.IsValid())
     {
         Character->GetMesh()->VisibilityBasedAnimTickOption=SavedAnimTickOption;
@@ -103,18 +107,56 @@ void USARideCameraComponent::LeaveView(bool bRestoreTarget)
     bFirstPerson=false;Target.Reset();PreviousView.Reset();bWasTransition=false;
     SmoothedEye=FVector::ZeroVector;NeckEyeOffset=FVector::ZeroVector;Anchor=FVector::ZeroVector;
 }
-void USARideCameraComponent::LookYaw(float V){if(bFirstPerson)LookX=FMath::Clamp(LookX+V*.65f,-110.f,110.f);}
-void USARideCameraComponent::LookPitch(float V){if(bFirstPerson)LookY=FMath::Clamp(LookY-V*.65f,-65.f,45.f);}
+void USARideCameraComponent::LookYaw(float V){ApplyLookInput(V,0.f);}
+void USARideCameraComponent::LookPitch(float V){ApplyLookInput(0.f,V);}
+void USARideCameraComponent::ApplyLookInput(float YawInput,float PitchInput)
+{
+    if(!FMath::IsFinite(YawInput)||!FMath::IsFinite(PitchInput))return;
+    auto* Car=Character.IsValid()?Character->FindComponentByClass<USAVehicleInteractionComponent>():nullptr;
+    if(Car&&Car->CurrentVehicle&&Car->State!=ESAVehicleInteractionState::Driving)return;
+    if(bFirstPerson)
+    {
+        LookX=FMath::Clamp(LookX+YawInput*LookSensitivity,-110.f,110.f);
+        LookY=FMath::Clamp(LookY-PitchInput*LookSensitivity,-65.f,45.f);
+    }
+    else if(Car&&RideTarget())
+    {
+        OrbitYaw=FMath::UnwindDegrees(OrbitYaw+YawInput*LookSensitivity);
+        OrbitPitch=FMath::Clamp(OrbitPitch-PitchInput*LookSensitivity,-35.f,45.f);
+    }
+}
+void USARideCameraComponent::RestoreOrbit()
+{
+    if(OrbitArm.IsValid())OrbitArm->SetRelativeRotation(SavedOrbitRotation);
+    OrbitArm.Reset();OrbitYaw=0.f;OrbitPitch=0.f;
+}
+void USARideCameraComponent::UpdateOrbit(AActor* Ride)
+{
+    if(!Ride){RestoreOrbit();return;}
+    if(OrbitArm.IsValid()&&OrbitArm->GetOwner()!=Ride)RestoreOrbit();
+    if(!OrbitArm.IsValid())
+    {
+        TArray<USpringArmComponent*> Arms;Ride->GetComponents(Arms);
+        for(auto* Arm:Arms)if(Arm->GetName()==TEXT("VehicleCameraBoom"))
+        {OrbitArm=Arm;SavedOrbitRotation=Arm->GetRelativeRotation();break;}
+    }
+    if(OrbitArm.IsValid())OrbitArm->SetRelativeRotation(FRotator(
+        FMath::Clamp(SavedOrbitRotation.Pitch+OrbitPitch,-75.f,15.f),
+        SavedOrbitRotation.Yaw+OrbitYaw,SavedOrbitRotation.Roll));
+}
 void USARideCameraComponent::TickComponent(float DT,ELevelTick Type,FActorComponentTickFunction* F)
 {
     Super::TickComponent(DT,Type,F);InstallInput();
     if(Character.IsValid())if(auto* Car=Character->FindComponentByClass<USAVehicleInteractionComponent>())Car->UpdateAnimationCamera();
     if(!bFirstPerson&&bPreferFirstPerson)if(AActor* Ride=RideTarget())EnterView(Ride);
     const bool bEligible=RideTarget()!=nullptr;
+    auto* DrivingCar=Character.IsValid()?Character->FindComponentByClass<USAVehicleInteractionComponent>():nullptr;
+    const bool bCarLook=DrivingCar&&DrivingCar->State==ESAVehicleInteractionState::Driving&&bEligible;
+    if(bCarLook)UpdateOrbit(RideTarget());else RestoreOrbit();
     if(RideInput)
     {
         RideInput->KeyBindings[0].bConsumeInput=bEligible;
-        for(auto& Binding:RideInput->AxisKeyBindings)Binding.bConsumeInput=bFirstPerson;
+        for(auto& Binding:RideInput->AxisKeyBindings)Binding.bConsumeInput=bFirstPerson||bCarLook;
     }
     if(!bFirstPerson)return;
     if(!Target.IsValid()||RideTarget()!=Target.Get())
@@ -135,10 +177,11 @@ void USARideCameraComponent::TickComponent(float DT,ELevelTick Type,FActorCompon
     FVector LocalEye=RideTransform.InverseTransformPosition(AnimatedEye);
     auto* Car=Character->FindComponentByClass<USAVehicleInteractionComponent>();
     const bool bTransition=!bBike&&Car&&Car->State!=ESAVehicleInteractionState::Driving;
-    if(bWasTransition&&!bTransition&&!bBike)Anchor=LocalEye;
+    if(bWasTransition&&!bTransition&&!bBike)
+        Anchor=RideTransform.InverseTransformPosition(Character->GetMesh()->GetSocketLocation(TEXT("pelvis")))+CarSeatedEyeOffset;
     bWasTransition=bTransition;
     // Smooth only animation displacement in ride space, never vehicle travel.
-    if(!bBike&&!bTransition)LocalEye=Anchor+(LocalEye-Anchor).GetClampedToMaxSize(4.f);
+    if(!bBike&&!bTransition)LocalEye=Anchor;
     SmoothedEye=FMath::VInterpTo(SmoothedEye,LocalEye,DT,bTransition?22.f:16.f);
     FRotator Body=Target->GetActorRotation();
     SmoothedBody=FMath::RInterpTo(SmoothedBody,FRotator(Body.Pitch,0.f,Body.Roll*.25f),DT,12.f);
@@ -156,6 +199,7 @@ void USARideCameraComponent::TickComponent(float DT,ELevelTick Type,FActorCompon
 void USARideCameraComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
     LeaveView(false);
+    RestoreOrbit();
     if(Controller.IsValid()&&RideInput)Controller->PopInputComponent(RideInput);
     if(Camera)Camera->Destroy();
     Super::EndPlay(Reason);
