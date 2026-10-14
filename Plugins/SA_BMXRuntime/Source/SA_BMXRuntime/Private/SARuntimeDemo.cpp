@@ -1,9 +1,11 @@
 #include "SARuntimeDemo.h"
 #include "BMXInteractionComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/DirectionalLight.h"
@@ -16,6 +18,24 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "InputCoreTypes.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+float AnimationStrideSpeed(UAnimationAsset* Asset,float Fallback)
+{
+    if (auto* Sequence=Cast<UAnimSequence>(Asset))
+    {
+        const float Duration=Sequence->GetPlayLength();
+        if (Duration>SMALL_NUMBER)
+        {
+            const FTransform Motion=Sequence->ExtractRootMotionFromRange(0.0,Duration,FAnimExtractContext(0.0,true));
+            const float Speed=Motion.GetTranslation().Size2D()/Duration*FMath::Abs(Sequence->RateScale);
+            if (FMath::IsFinite(Speed)&&Speed>10.f) return Speed;
+        }
+    }
+    return Fallback;
+}
+}
 
 ASADemoBike::ASADemoBike()
 {
@@ -86,6 +106,10 @@ void ASADemoBike::PostInitializeComponents()
 ASADemoCharacter::ASADemoCharacter()
 {
     PrimaryActorTick.bCanEverTick=true;
+    // Native crouch restores the CLASS DEFAULT mesh offset, not the value
+    // assigned in BeginPlay. Set the standing offset on the default as well.
+    GetMesh()->SetRelativeLocation(FVector(0,0,-90));
+    GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
     Interaction=CreateDefaultSubobject<UBMXInteractionComponent>(TEXT("BMX_Interaction"));
     // No skeleton: the placeholder demo deliberately does not demonstrate rider IK.
     Interaction->RiderAnimClass=UAnimInstance::StaticClass();
@@ -110,6 +134,7 @@ void ASADemoCharacter::BeginPlay()
         GetMesh()->SetSkeletalMeshAsset(Rider);
         GetMesh()->SetRelativeLocation(FVector(0,0,-90));
         GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
+        CacheInitialMeshOffset(GetMesh()->GetRelativeLocation(),GetMesh()->GetRelativeRotation());
         Placeholder->SetVisibility(false);
     }
     if(UClass* AnimClass=DemoRiderAnimClass.LoadSynchronous())
@@ -118,8 +143,46 @@ void ASADemoCharacter::BeginPlay()
     }
     IdleAnimation=DemoIdleAnimation.LoadSynchronous();
     WalkAnimation=DemoWalkAnimation.LoadSynchronous();
+    CrouchAnimation=DemoCrouchAnimation.LoadSynchronous();
+    CrouchWalkAnimation=DemoCrouchWalkAnimation.LoadSynchronous();
+    JumpAnimation=DemoJumpAnimation.LoadSynchronous();
+    FallAnimation=DemoFallAnimation.LoadSynchronous();
+    LandAnimation=DemoLandAnimation.LoadSynchronous();
+    // This demo plays one walking clip, not a run blend space. Use its authored
+    // stride speed for capsule motion and scale its cadence during acceleration.
+    const float WalkSpeed=AnimationStrideSpeed(WalkAnimation,150.f);
+    GetCharacterMovement()->MaxWalkSpeed=WalkSpeed;
+    GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch=true;
+    GetCharacterMovement()->SetCrouchedHalfHeight(55.f);
+    GetCharacterMovement()->MaxWalkSpeedCrouched=AnimationStrideSpeed(CrouchWalkAnimation,120.f);
+    GetCharacterMovement()->bOrientRotationToMovement=true;
+    GetCharacterMovement()->RotationRate=FRotator(0,540.f,0);
+    bUseControllerRotationYaw=false;
+    UE_LOG(LogTemp,Display,TEXT("SAOnFoot: walking stride speed=%.2f cm/s"),WalkSpeed);
     if(IdleAnimation) GetMesh()->PlayAnimation(IdleAnimation,true);
 }
+
+void ASADemoCharacter::SetupPlayerInputComponent(UInputComponent* Input)
+{
+    Super::SetupPlayerInputComponent(Input);
+    Input->BindKey(EKeys::SpaceBar,IE_Pressed,this,&ASADemoCharacter::OnFootJumpPressed);
+    Input->BindKey(EKeys::SpaceBar,IE_Released,this,&ASADemoCharacter::OnFootJumpReleased);
+    for (const FKey& Key : {EKeys::LeftControl,EKeys::C})
+    {
+        Input->BindKey(Key,IE_Pressed,this,&ASADemoCharacter::OnFootCrouchPressed);
+        Input->BindKey(Key,IE_Released,this,&ASADemoCharacter::OnFootCrouchReleased);
+    }
+}
+void ASADemoCharacter::OnFootJumpPressed()
+{
+    if (Interaction->State==EBMXState::Dropped) {UnCrouch();Jump();}
+}
+void ASADemoCharacter::OnFootJumpReleased() {StopJumping();}
+void ASADemoCharacter::OnFootCrouchPressed()
+{
+    if (Interaction->State==EBMXState::Dropped) Crouch();
+}
+void ASADemoCharacter::OnFootCrouchReleased() {UnCrouch();}
 
 void ASADemoCharacter::Tick(float DT)
 {
@@ -129,14 +192,52 @@ void ASADemoCharacter::Tick(float DT)
     Placeholder->SetRelativeLocation(Mounted?FVector(0,0,25):FVector::ZeroVector);
     if(!Mounted)
     {
-        UAnimationAsset* Desired=GetVelocity().SizeSquared2D()>9.f&&WalkAnimation?WalkAnimation.Get():IdleAnimation.Get();
+        const float Speed=GetVelocity().Size2D();
+        const bool Falling=GetCharacterMovement()->IsFalling();
+        if (bWasFalling&&!Falling&&Speed<=3.f) LandingPoseTime=0.25f;
+        LandingPoseTime=FMath::Max(0.f,LandingPoseTime-DT);
+        UAnimationAsset* Desired=Speed>3.f&&WalkAnimation?WalkAnimation.Get():IdleAnimation.Get();
+        bool Loop=true;
+        if (Falling)
+        {
+            Desired=GetVelocity().Z>0.f&&JumpAnimation?JumpAnimation.Get():FallAnimation.Get();
+            Loop=Desired==FallAnimation.Get();
+        }
+        else if (bIsCrouched)
+        {
+            Desired=Speed>3.f&&CrouchWalkAnimation?CrouchWalkAnimation.Get():CrouchAnimation.Get();
+            Loop=Desired==CrouchWalkAnimation.Get();
+        }
+        else if (LandingPoseTime>0.f&&Speed<=3.f&&LandAnimation)
+        {Desired=LandAnimation.Get();Loop=false;}
         auto* Single=GetMesh()->GetSingleNodeInstance();
-        if(Desired&&(!Single||Single->GetCurrentAsset()!=Desired)) GetMesh()->PlayAnimation(Desired,true);
+        if(Desired&&(!Single||Single->GetCurrentAsset()!=Desired))
+        {
+            GetMesh()->PlayAnimation(Desired,Loop);
+            // After crouch walking, hold the settled crouch instead of replaying
+            // a transition that starts upright.
+            if (Desired==CrouchAnimation.Get()&&bWasCrouched)
+                if (auto* Sequence=Cast<UAnimSequence>(Desired))
+                    GetMesh()->GetSingleNodeInstance()->SetPosition(Sequence->GetPlayLength()-0.001f,false);
+        }
+        if (auto* Current=GetMesh()->GetSingleNodeInstance())
+        {
+            // CharacterMovement owns translation. Extract and discard clip root
+            // motion, so it cannot add a second movement source after dismount.
+            Current->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+            float Rate=1.f;
+            if (Desired==WalkAnimation.Get()) Rate=Speed/FMath::Max(GetCharacterMovement()->MaxWalkSpeed,1.f);
+            else if (Desired==CrouchWalkAnimation.Get()) Rate=Speed/FMath::Max(GetCharacterMovement()->MaxWalkSpeedCrouched,1.f);
+            else if (Desired==LandAnimation.Get()) Rate=2.5f;
+            Current->SetPlayRate(Rate);
+        }
+        bWasFalling=Falling;bWasCrouched=bIsCrouched;
         const FRotator Heading(0,PC->GetControlRotation().Yaw,0);
         AddMovementInput(Heading.Vector(),(PC->IsInputKeyDown(EKeys::W)?1.f:0.f)-(PC->IsInputKeyDown(EKeys::S)?1.f:0.f));
         AddMovementInput(FRotationMatrix(Heading).GetUnitAxis(EAxis::Y),(PC->IsInputKeyDown(EKeys::D)?1.f:0.f)-(PC->IsInputKeyDown(EKeys::A)?1.f:0.f));
         float MX=0,MY=0; PC->GetInputMouseDelta(MX,MY); AddControllerYawInput(MX*.6f);AddControllerPitchInput(-MY*.6f);
     }
+    else {bWasFalling=false;bWasCrouched=false;LandingPoseTime=0.f;}
     if(GEngine) GEngine->AddOnScreenDebugMessage(781,0.f,FColor::White,
         TEXT("Primitive BMX demo | WASD move | F mount/exit | Space hop | Alt brake | Ctrl wheelie | Shift sprint\n")+Interaction->LastStatus);
 }

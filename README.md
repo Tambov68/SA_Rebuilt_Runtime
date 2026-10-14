@@ -8,6 +8,7 @@ It contains the runtime plugin and a small BMX demo, not the complete game or it
 
 - BMX interaction: mounting, dismounting, ground recovery and collision-aware exit checks.
 - Procedural bicycle movement, pedals, steering, hops, wheelies and rider IK targets.
+- Demo locomotion: stride-matched walking, movement-facing rotation, crouch and jump input.
 - Vehicle interaction and ride camera components.
 - Photo mode and a project-specific cinematic director.
 
@@ -48,6 +49,14 @@ Default input includes F to interact, W/S to move, A/D to steer, Space to hop,
 Left Alt to brake, Left Control for wheelie, Left Shift for sprint/stoppie,
 and mouse axes for looking. The implementation has state-dependent input behavior.
 
+On foot, the demo uses Space to jump and held Left Control or C to crouch.
+Assign your own compatible clips through `DemoIdleAnimation`, `DemoWalkAnimation`,
+`DemoCrouchAnimation` (standing-to-crouch transition), `DemoCrouchWalkAnimation`,
+`DemoJumpAnimation`, `DemoFallAnimation` and `DemoLandAnimation` in the
+`[/Script/SA_BMXRuntime.SADemoCharacter]` config section. These clips are not
+distributed here. Walking cadence follows capsule speed; the standing mesh
+offset is initialized on the class default so native crouch keeps it grounded.
+
 ## Current limitations
 
 - Experimental, project-specific code; the included demo shows Manny in reference pose, without animated rider IK.
@@ -58,6 +67,9 @@ and mouse axes for looking. The implementation has state-dependent input behavio
 - Bicycle dimensions, support height and rider offsets are tuned for the original BMX;
   adapting a differently sized model requires checking these values and contacts.
 - Multiplayer, packaging and compatibility outside UE 5.8 are not verified.
+- Latest contact, momentum and locomotion changes built successfully in a local UE 5.8
+  Development Editor host. PIE checks confirmed 1.5 mm tyre clearance, BMX hopping,
+  walking and grounded crouch. Final on-foot jump/landing verification remains pending.
 - The source edition includes optional DLSS integration and native demo classes absent from the private plugin.
 - Clean UE 5.8 `BuildPlugin` validation without DLSS: Editor Win64 Development,
   UnrealGame Win64 Development and UnrealGame Win64 Shipping. Interactive demo PIE,

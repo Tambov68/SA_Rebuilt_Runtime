@@ -24,6 +24,8 @@
 
 namespace
 {
+// Measured from BMX_Wheel_F/R_PBR bounds, in centimetres.
+constexpr float TyreRadius=26.45f;
 template<class T> T* Part(AActor* Actor, FName Name)
 {
     if (!IsValid(Actor)) return nullptr;
@@ -65,11 +67,11 @@ float HopPitch(float Time)
     if (Time<0.16f) return 18.f*FMath::Clamp(Time/0.16f,0.f,1.f);
     return 18.f*(1.f-FMath::Clamp((Time-0.16f)/0.24f,0.f,1.f));
 }
-FVector SupportedRoot(FVector Position, const FHitResult& Ground)
+FVector SupportedRoot(FVector Position, const FHitResult& Ground, float Clearance)
 {
     // Keep XY fixed: adding the normal's XY every frame causes downhill drift.
     const FVector N=Ground.ImpactNormal;
-    Position.Z=(FVector::DotProduct(N,Ground.ImpactPoint)+54.55f-N.X*Position.X-N.Y*Position.Y)/N.Z;
+    Position.Z=(FVector::DotProduct(N,Ground.ImpactPoint)+27.03f+TyreRadius+Clearance-N.X*Position.X-N.Y*Position.Y)/N.Z;
     return Position;
 }
 void ResetPedals(AActor* Bike)
@@ -217,8 +219,8 @@ bool UBMXInteractionComponent::TryMount(AActor* Bike)
     if (!GroundUnderCrank(Bike,Ground)) { LastStatus=TEXT("No walkable ground below crank");return false; }
     LastGroundNormal=Ground.ImpactNormal;
     const FQuat Rotation=GroundRotation(Bike->GetActorForwardVector(),LastGroundNormal);
-    // Crank local X=-10.1344cm, tyre lowest Z=-53.5cm. Add 1cm clearance.
-    const FVector Location=SupportedRoot(Bike->GetActorLocation(),Ground);
+    // Match the measured tyre bottom used by the riding and landing probes.
+    const FVector Location=SupportedRoot(Bike->GetActorLocation(),Ground,WheelContactClearance);
     RaiseTo=FTransform(Rotation,Location,Frame->GetComponentScale());
     // Check the entire interpolated body path before disabling its simulation.
     RaiseFrom=Bike->GetActorTransform();
@@ -255,7 +257,7 @@ void UBMXInteractionComponent::CompleteMount()
     SavedControllerYaw=C->bUseControllerRotationYaw;SavedThirdPerson=BoolValue(C,"IsThirdPerson",true);
     SavedWeaponEquipped=BoolValue(C,"bWeaponEquipped");
     if (SavedWeaponEquipped) if (UFunction* F=C->FindFunction(TEXT("ToggleWeapon"))) C->ProcessEvent(F,nullptr);
-    C->UnCrouch(); Movement->StopMovementImmediately();Movement->DisableMovement();
+    C->StopJumping();C->UnCrouch(); Movement->StopMovementImmediately();Movement->DisableMovement();
     Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     C->AttachToComponent(Frame,FAttachmentTransformRules::SnapToTargetNotIncludingScale,TEXT("Socket_Seat"));
     // Match the existing test rig's pelvis (-8cm aft,+9cm up) using this mesh's reference skeleton.
@@ -528,7 +530,7 @@ bool UBMXInteractionComponent::TryRecover()
 }
 void UBMXInteractionComponent::UpdatePedals(float DeltaTime)
 {
-    const float Cadence=FMath::Clamp(RideSpeed*360.f/165.f,-1080.f,1080.f);
+    const float Cadence=LastThrottle>0.f&&!LastBrake?FMath::Clamp(RideSpeed*360.f/165.f,0.f,1080.f):0.f;
     PedalAngle=FMath::Fmod(PedalAngle+Cadence*DeltaTime,360.f);
     PedalPhaseDegrees=FMath::Fmod(PedalAngle+360.f,360.f);
     if (auto* Crank=Part<USceneComponent>(CurrentBike,"BMX_Crank")) Crank->SetRelativeRotation(FRotator(0,0,PedalAngle));
@@ -546,7 +548,7 @@ void UBMXInteractionComponent::AirTick(float DeltaTime)
     const FRotator Start=HopStartRotation.Rotator();
     const float Blend=FMath::Clamp(HopAirTime/0.3f,0.f,1.f);
     const float LiftPitch=HopPitch(HopAirTime);
-    const FQuat Rotation=FRotator(FMath::Clamp(Start.Pitch,-25.f,25.f)*(1.f-Blend)+LiftPitch,Start.Yaw,FMath::Clamp(Start.Roll,-20.f,20.f)*(1.f-Blend)).Quaternion();
+    FQuat Rotation=FRotator(FMath::Clamp(Start.Pitch,-25.f,25.f)*(1.f-Blend)+LiftPitch,Start.Yaw,FMath::Clamp(Start.Roll,-20.f,20.f)*(1.f-Blend)).Quaternion();
     FCollisionQueryParams Q(SCENE_QUERY_STAT(BMXHopLanding),false,GetOwner());Q.AddIgnoredActor(CurrentBike);
     FHitResult Front,Rear;
     const float MinNormalZ=FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(MaxRideSlopeDegrees,35.f,80.f)));
@@ -554,8 +556,8 @@ void UBMXInteractionComponent::AirTick(float DeltaTime)
     {
         const FVector P=Position+Rotation.RotateVector(FVector(X,0,-27.03f));
         const FVector OldAxle=Previous+CurrentBike->GetActorQuat().RotateVector(FVector(X,0,-27.03f));
-        const FVector TraceStart(P.X,P.Y,FMath::Max(P.Z,OldAxle.Z)+4.f);
-        return GetWorld()->SweepSingleByChannel(H,TraceStart,P-FVector::UpVector*500.f,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(28.4f),Q)
+        const FVector TraceStart(P.X,P.Y,FMath::Max(P.Z,OldAxle.Z)+TyreRadius+4.f);
+        return GetWorld()->SweepSingleByChannel(H,TraceStart,P-FVector::UpVector*500.f,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(TyreRadius),Q)
             &&!H.bStartPenetrating&&H.ImpactNormal.Z>=MinNormalZ;
     };
     const bool HasFront=Support(47.36f,Front),HasRear=Support(-46.34f,Rear);
@@ -567,7 +569,19 @@ void UBMXInteractionComponent::AirTick(float DeltaTime)
         const float FloorZ=FMath::Max(RootZ(47.36f,Front),RootZ(-46.34f,Rear));
         if (Position.Z<=FloorZ+0.5f&&FloorZ<=Previous.Z+4.f)
         {
-            Position.Z=FloorZ+0.25f;
+            const FVector LandingNormal=(Front.ImpactNormal+Rear.ImpactNormal).GetSafeNormal();
+            const float LandingImpact=FMath::Max(0.f,-FVector::DotProduct(HopVelocity,LandingNormal));
+            if (LandingImpact>600.f)
+            {
+                LastCrashSpeed=LandingImpact;
+                if (TriggerCrash(FVector::ZeroVector,(Front.ImpactPoint+Rear.ImpactPoint)*0.5f)) return;
+            }
+            Rotation=GroundRotation(Rotation.GetForwardVector(),LandingNormal);
+            // Re-probe the final axle positions after aligning to the landing.
+            // The ballistic pitch must not leave one wheel hanging on a slope.
+            if (Support(47.36f,Front)&&Support(-46.34f,Rear)&&CoherentWheelSupport(Front,Rear))
+                Position.Z=FMath::Max(RootZ(47.36f,Front),RootZ(-46.34f,Rear));
+            else Position.Z=FloorZ;
             bLanding=BikePoseClear(CurrentBike,FTransform(Rotation,Position,CurrentBike->GetActorScale3D()));
         }
     }
@@ -575,14 +589,14 @@ void UBMXInteractionComponent::AirTick(float DeltaTime)
     if (!IsMounted()) return;
     LastHopHeight=FMath::Max(LastHopHeight,CurrentBike->GetActorLocation().Z-HopStart.Z);
     const float Travel=FVector::Dist2D(Previous,CurrentBike->GetActorLocation());
-    WheelPhaseDegrees=FMath::Fmod(WheelPhaseDegrees-Travel*180.f/(PI*27.f),360.f);
+    WheelPhaseDegrees=FMath::Fmod(WheelPhaseDegrees-Travel*180.f/(PI*TyreRadius),360.f);
     for (FName Name : {FName("BMX_Wheel_F"),FName("BMX_Wheel_R")})
         if (auto* Wheel=Part<USceneComponent>(CurrentBike,Name)) Wheel->SetRelativeRotation(FRotator(0,0,WheelPhaseDegrees));
     if (bLanding&&(!Hit.bBlockingHit||Hit.ImpactNormal.Z>=MinNormalZ))
     {
         HopState=EBMXHopState::Landing;++LandingCount;RiderLandingBlend=1.f;
         LastGroundNormal=(Front.ImpactNormal+Rear.ImpactNormal).GetSafeNormal();
-        RideSpeed=FMath::Min(HopVelocity.Size2D(),FMath::Max(MaxRideSpeed,MaxSprintSpeed))*(RideSpeed<0.f?-1.f:1.f);
+            RideSpeed=FMath::Clamp(FVector::DotProduct(HopVelocity,Rotation.GetForwardVector()),-MaxReverseSpeed,FMath::Max(MaxRideSpeed,MaxSprintSpeed));
         HopVelocity=FVector::ZeroVector;HopCharge=0.f;
         LastStatus=TEXT("Hop landed: ground control restored");
         UE_LOG(LogTemp,Display,TEXT("BMXHop: landed height=%.1f time=%.2f front=%s rear=%s"),LastHopHeight,HopAirTime,*GetNameSafe(Front.GetActor()),*GetNameSafe(Rear.GetActor()));
@@ -679,10 +693,13 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
     const bool Slowing=FMath::Abs(RideSpeed)>FMath::Abs(TargetSpeed)&&RideSpeed*TargetSpeed>=0.f;
     const float Acceleration=Brake?BrakeDeceleration:(Slowing||Throttle==0.f?180.f:(LastSprint?SprintAcceleration:250.f));
     RideSpeed=FMath::FInterpConstantTo(RideSpeed,TargetSpeed,DeltaTime,Acceleration);
-    const float LeanTarget=WheelieDegrees+StoppieDegrees>1.f?0.f:-Steering*MaxLeanDegrees*FMath::Clamp(RideSpeed/FMath::Max(MaxRideSpeed,1.f),-1.f,1.f);
-    LeanDegrees=FMath::FInterpTo(LeanDegrees,LeanTarget,DeltaTime,5.f);
     const float TurnScale=WheelieDegrees+StoppieDegrees>1.f?0.4f:1.f;
-    const FQuat Turn=FQuat(LastGroundNormal,FMath::DegreesToRadians(Steering*55.f*TurnScale*DeltaTime*FMath::Clamp(RideSpeed/200.f,-1.f,1.f)));
+    const float Gravity=FMath::Max(FMath::Abs(GetWorld()->GetGravityZ()),1.f);
+    const float MaxTurnRate=Gravity*FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(MaxLeanDegrees,0.f,45.f)))/FMath::Max(FMath::Abs(RideSpeed),30.f);
+    const float TurnRate=FMath::Clamp(FMath::DegreesToRadians(Steering*55.f*TurnScale*FMath::Clamp(RideSpeed/200.f,-1.f,1.f)),-MaxTurnRate,MaxTurnRate);
+    const float LeanTarget=WheelieDegrees+StoppieDegrees>1.f?0.f:-FMath::RadiansToDegrees(FMath::Atan(RideSpeed*TurnRate/Gravity));
+    LeanDegrees=FMath::FInterpTo(LeanDegrees,LeanTarget,DeltaTime,5.f);
+    const FQuat Turn=FQuat(LastGroundNormal,TurnRate*DeltaTime);
     // Remove the previous pivot displacement before integrating travel. Never add it cumulatively.
     FQuat Rotation=GroundRotation((Turn*CurrentBike->GetActorQuat()).GetForwardVector(),LastGroundNormal);
     const FVector PreviousPosition=CurrentBike->GetActorLocation()-WheelieRootOffset;
@@ -697,7 +714,7 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
         // raises the entire frame until the rear probe loses the floor.
         const FVector P=Position+Rotation.RotateVector(FVector(X,0,-27.03f));
         return GetWorld()->SweepSingleByChannel(Hit,P+FVector::UpVector*90.f,P-FVector::UpVector*240.f,
-            FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(28.4f),Q)
+            FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(TyreRadius),Q)
             && !Hit.bStartPenetrating && Hit.ImpactNormal.Z>=MinRideNormalZ;
     };
     const auto SampleSupport=[&]()
@@ -710,22 +727,18 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
         Ground.ImpactPoint=(Front.Location+Rear.Location)*0.5f;
         return Ground.ImpactNormal.Z>=MinRideNormalZ;
     };
-    bool bSupportStopped=false;
+    const auto BeginFall=[&]()
+    {
+        HopState=EBMXHopState::Airborne;HopAirTime=0.f;
+        HopVelocity=CurrentBike->GetActorForwardVector()*RideSpeed;
+        HopStart=CurrentBike->GetActorLocation();HopStartRotation=CurrentBike->GetActorQuat();
+        WheelieDegrees=0.f;StoppieDegrees=0.f;WheelieRootOffset=FVector::ZeroVector;
+        AirTick(DeltaTime);if(IsMounted())UpdateRiderMotion(DeltaTime);
+    };
     if (!SampleSupport())
     {
-        // Refuse the unsupported next step, then lower the stunt at the still-supported current base.
-        Position=PreviousPosition;
-        RideSpeed=0.f;LastWheelie=false;LastStoppie=false;StoppieTime=0.f;
-        if (!SampleSupport())
-        {
-            // Lost support starts a fall rather than freezing the mounted pose.
-            HopState=EBMXHopState::Airborne;HopAirTime=0.f;
-            HopVelocity=FVector::ZeroVector;HopStart=CurrentBike->GetActorLocation();
-            HopStartRotation=CurrentBike->GetActorQuat();
-            WheelieDegrees=0.f;StoppieDegrees=0.f;WheelieRootOffset=FVector::ZeroVector;
-            AirTick(DeltaTime);if(IsMounted())UpdateRiderMotion(DeltaTime);return;
-        }
-        bSupportStopped=true;
+        // A ledge releases the bike with its existing momentum, not an edge stop.
+        BeginFall();return;
     }
     const FVector Heading=Rotation.GetForwardVector().GetSafeNormal2D();
     Rotation=GroundRotation(Heading,Ground.ImpactNormal)*FQuat(FVector::ForwardVector,FMath::DegreesToRadians(LeanDegrees));LastGroundNormal=Ground.ImpactNormal;
@@ -747,9 +760,11 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
     }
     // The last rotation changes axle XY again. Re-sample at that FINAL rotation
     // and solve height without rotating again: stale contacts can bury a tyre
-    // in the steep coping face. 28.4cm encloses the tyre collider box corners.
+    // in the steep coping face.
     if (SampleSupport())
         Position.Z=FMath::Max(AxleHeight(47.36f,Front),AxleHeight(-46.34f,Rear));
+    // A distant floor returned by the probes is a drop, not immediate support.
+    if (Position.Z<PreviousPosition.Z-12.f) {BeginFall();return;}
     const FVector GroundPosition=Position;
     const FQuat GroundQuat=Rotation;
     const float PreviousAngle=WheelieDegrees-StoppieDegrees;
@@ -805,11 +820,10 @@ void UBMXInteractionComponent::RideTick(float DeltaTime)
         LastStatus=FString::Printf(TEXT("Ride blocked by %s; normal %s; penetration %.3f"),*GetNameSafe(Hit.GetComponent()),*Hit.ImpactNormal.ToString(),Hit.PenetrationDepth);
     }
     else LastStatus=HopState==EBMXHopState::Charging?TEXT("Charging hop: release Space"):TEXT("Mounted: WASD, Shift sprint, Space hop, Alt brake, Ctrl wheelie, Shift+Alt stoppie, F exit");
-    if (bSupportStopped&&!Hit.bBlockingHit) LastStatus=TEXT("Edge guarded: stopped on supported ground; lowering stunt");
     WheelieDegrees=FMath::Max(0.f,AppliedAngle);StoppieDegrees=FMath::Max(0.f,-AppliedAngle);WheelieRootOffset=Position-GroundPosition;
     const FVector Forward=GroundQuat.GetForwardVector();
     const float Travel=FVector::DotProduct((CurrentBike->GetActorLocation()-WheelieRootOffset)-PreviousPosition,Forward.GetSafeNormal2D())/FMath::Max(Forward.Size2D(),0.1f);
-    WheelPhaseDegrees=FMath::Fmod(WheelPhaseDegrees-Travel*180.f/(PI*27.f),360.f);
+    WheelPhaseDegrees=FMath::Fmod(WheelPhaseDegrees-Travel*180.f/(PI*TyreRadius),360.f);
     for (FName Name : {FName("BMX_Wheel_F"),FName("BMX_Wheel_R")})
         if (auto* Wheel=Part<USceneComponent>(CurrentBike,Name)) Wheel->SetRelativeRotation(FRotator(0,0,WheelPhaseDegrees));
     // Steering is visual while mounted; the dropped compound collider is neutralized on release.
@@ -876,7 +890,12 @@ bool FBMXSupportRegression::RunTest(const FString& Parameters)
 {
     FHitResult Front,Rear;
     Front.ImpactNormal=Rear.ImpactNormal=FVector::UpVector;
-    Front.Location=FVector(47.36f,0,28.4f);Rear.Location=FVector(-46.34f,0,28.4f);
+    Front.Location=FVector(47.36f,0,TyreRadius);Rear.Location=FVector(-46.34f,0,TyreRadius);
+    FHitResult FlatGround;
+    FlatGround.ImpactNormal=FVector::UpVector;FlatGround.ImpactPoint=FVector(0,0,100);
+    const FVector MountedRoot=SupportedRoot(FVector(25,40,200),FlatGround,0.15f);
+    TestTrue(TEXT("Mount tyre clearance matches riding"),FMath::IsNearlyEqual(MountedRoot.Z-27.03f-TyreRadius,100.15f,0.001f));
+    TestEqual(TEXT("Ground solve preserves horizontal position"),FVector2D(MountedRoot),FVector2D(25,40));
     TestTrue(TEXT("Flat ground supported"),CoherentWheelSupport(Front,Rear));
     Front.Location.Z+=45.f;
     TestFalse(TEXT("Bench seat and ground are not a ramp"),CoherentWheelSupport(Front,Rear));

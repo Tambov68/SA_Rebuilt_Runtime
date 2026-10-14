@@ -30,15 +30,33 @@ public:
     ASADemoCharacter();
     virtual void Tick(float DeltaSeconds) override;
     virtual void BeginPlay() override;
+    virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
     UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<USkeletalMesh> DemoRiderMesh;
     UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftClassPtr<UAnimInstance> DemoRiderAnimClass;
     UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoIdleAnimation;
     UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoWalkAnimation;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoCrouchAnimation;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoCrouchWalkAnimation;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoJumpAnimation;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoFallAnimation;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<UAnimationAsset> DemoLandAnimation;
 private:
     UPROPERTY() TObjectPtr<UBMXInteractionComponent> Interaction;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Placeholder;
     UPROPERTY() TObjectPtr<UAnimationAsset> IdleAnimation;
     UPROPERTY() TObjectPtr<UAnimationAsset> WalkAnimation;
+    UPROPERTY() TObjectPtr<UAnimationAsset> CrouchAnimation;
+    UPROPERTY() TObjectPtr<UAnimationAsset> CrouchWalkAnimation;
+    UPROPERTY() TObjectPtr<UAnimationAsset> JumpAnimation;
+    UPROPERTY() TObjectPtr<UAnimationAsset> FallAnimation;
+    UPROPERTY() TObjectPtr<UAnimationAsset> LandAnimation;
+    bool bWasFalling=false;
+    bool bWasCrouched=false;
+    float LandingPoseTime=0.f;
+    void OnFootJumpPressed();
+    void OnFootJumpReleased();
+    void OnFootCrouchPressed();
+    void OnFootCrouchReleased();
 };
 
 /** Select this as a blank map's GameMode override to spawn the demo at runtime. */

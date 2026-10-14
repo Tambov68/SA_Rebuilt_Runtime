@@ -57,7 +57,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX") float MaxLeanDegrees = 8.f;
     // Riding bowls needs steeper support than the safe standing/mount surface.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Ground", meta=(ClampMin="35", ClampMax="80", Units="deg")) float MaxRideSlopeDegrees = 70.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX", meta=(ClampMin="0", ClampMax="3", Units="cm")) float WheelContactClearance = 0.52f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX", meta=(ClampMin="0", ClampMax="3", Units="cm")) float WheelContactClearance = 0.15f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Camera") float CameraFollowDelay = 1.5f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Camera") float CameraFollowSpeed = 2.5f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BMX|Wheelie", meta=(ClampMin="0", ClampMax="35")) float MaxWheelieDegrees = 28.f;
