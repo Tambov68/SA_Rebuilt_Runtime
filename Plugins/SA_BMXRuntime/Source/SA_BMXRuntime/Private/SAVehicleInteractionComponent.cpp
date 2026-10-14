@@ -183,7 +183,9 @@ bool USAVehicleInteractionComponent::TryEnter(APawn* Vehicle)
     Mesh->AddTickPrerequisiteComponent(this);
     P->AttachToActor(Vehicle,FAttachmentTransformRules::KeepWorldTransform);
     PC->SetIgnoreMoveInput(true);bIgnoreMoveAdded=true;
-    M->SetThrottleInput(0.f);M->SetSteeringInput(0.f);M->SetBrakeInput(1.f);M->SetHandbrakeInput(true);
+    // Brake input also requests reverse near rest. Park independently of the pedals.
+    M->StopMovementImmediately();M->SetParked(true);
+    M->SetThrottleInput(0.f);M->SetSteeringInput(0.f);M->SetBrakeInput(0.f);M->SetHandbrakeInput(true);
     State=ESAVehicleInteractionState::Entering;bDriving=true;TransitionTime=0.f;
     SetDriverPose(EnterAnimation,0.f,EntryWarp);SetDoor(Vehicle,-1,0.f);StartCamera();
     LastStatus=TEXT("Entering: opening door, ducking into seat");return true;
@@ -200,7 +202,7 @@ void USAVehicleInteractionComponent::FinishEntry()
     }
     CurrentVehicle->EnableInput(DriverController.Get());
     auto* M=CurrentVehicle->FindComponentByClass<UChaosVehicleMovementComponent>();
-    M->SetBrakeInput(0.f);M->SetHandbrakeInput(false);M->SetThrottleInput(0.f);
+    M->SetParked(false);M->SetBrakeInput(0.f);M->SetHandbrakeInput(false);M->SetThrottleInput(0.f);
     DriverController->SetControlRotation(FRotator(0.f,CurrentVehicle->GetActorRotation().Yaw,0.f));
     VisualSteering=0.f;SetDriverPose(DrivingAnimation,DrivingAnimation->GetPlayLength()*.5f);SetDoor(CurrentVehicle,-1,0.f);
     State=ESAVehicleInteractionState::Driving;++EnterCount;FinishCamera(CurrentVehicle);
@@ -275,11 +277,17 @@ void USAVehicleInteractionComponent::FinishExit()
         FVector::DistSquared(Confirmed,PlannedExit)>FMath::Square(60.f))
     {
         SetDoor(CurrentVehicle,ExitSide,0.f);ExitSide=-1;SetDriverPose(DrivingAnimation,DrivingAnimation->GetPlayLength()*.5f);
+        if (auto* M=CurrentVehicle->FindComponentByClass<UChaosVehicleMovementComponent>())
+        { M->SetParked(false);M->SetBrakeInput(0.f);M->SetHandbrakeInput(false); }
         CurrentVehicle->EnableInput(DriverController.Get());State=ESAVehicleInteractionState::Driving;
         FinishCamera(CurrentVehicle);LastStatus=TEXT("Exit became obstructed; remain seated");return;
     }
     if (auto* M=CurrentVehicle->FindComponentByClass<UChaosVehicleMovementComponent>())
-    { M->SetThrottleInput(0.f);M->SetBrakeInput(1.f);M->SetSteeringInput(0.f);M->SetHandbrakeInput(true); }
+    {
+        // Clear interpolated and replicated inputs while the driver still owns the car.
+        // Raw pedal setters alone leave the last replicated throttle active after unpossess.
+        M->StopMovementImmediately();M->SetParked(true);
+    }
     SetDoor(CurrentVehicle,ExitSide,0.f);
     const FRotator Yaw(0.f,CurrentVehicle->GetActorRotation().Yaw,0.f);
     RestoreCharacter(Confirmed,Yaw);LastExitLocation=Confirmed;++ExitCount;FinishCamera(Character.Get());
@@ -316,7 +324,7 @@ void USAVehicleInteractionComponent::ReleaseJump()
     LastReleaseVelocity=Velocity-V->GetActorRightVector()*JumpSideSpeed+FVector::UpVector*JumpUpSpeed;
     const FRotator Yaw(0.f,V->GetActorRotation().Yaw,0.f);
     if (auto* M=V->FindComponentByClass<UChaosVehicleMovementComponent>())
-    { M->SetThrottleInput(0.f);M->SetBrakeInput(0.f);M->SetSteeringInput(0.f);M->SetHandbrakeInput(false); }
+    { M->SetParked(false);M->SetThrottleInput(0.f);M->SetBrakeInput(0.f);M->SetSteeringInput(0.f);M->SetHandbrakeInput(false); }
     ClosingDoorVehicle=V;ClosingDoorSide=-1;SetDoor(V,-1,1.f);
     RestoreCharacter(Pelvis,Yaw);FinishCamera(P);
     const bool Released=BMX->BeginExternalRagdoll(LastReleaseVelocity,JumpAnimation,JumpAnimation->GetPlayLength(),ReleaseMeshWorld);
@@ -344,7 +352,7 @@ void USAVehicleInteractionComponent::TickComponent(float Dt,ELevelTick Type,FAct
     auto* M=CurrentVehicle->FindComponentByClass<UChaosVehicleMovementComponent>();
     M->SetThrottleInput(0.f);M->SetSteeringInput(0.f);
     const bool Jumping=State==ESAVehicleInteractionState::Jumping;
-    M->SetBrakeInput(Jumping?0.f:1.f);M->SetHandbrakeInput(!Jumping);
+    M->SetBrakeInput(0.f);M->SetParked(!Jumping);M->SetHandbrakeInput(!Jumping);
     if (Entering)
     {
         SetDoor(CurrentVehicle,-1,EntryDoor(TransitionTime));SetDriverPose(EnterAnimation,TransitionTime,EntryWarp*(1.f-Ease(TransitionTime/.35f)));
