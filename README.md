@@ -48,6 +48,8 @@ and mouse axes for looking. The implementation has state-dependent input behavio
 - Vehicle interaction has fallback references to `/Game/Vehicles/F40/Animation/...`.
   Those animations are not distributed; assign your own animations through the component properties.
 - The cinematic director assumes actors and staging from the original project.
+- Bicycle dimensions, support height and rider offsets are tuned for the original BMX;
+  adapting a differently sized model requires checking these values and contacts.
 - Multiplayer, packaging and compatibility outside UE 5.8 are not verified.
 - This source snapshot is byte-identical to the private project's plugin.
   The public package has not received a fresh independent build or PIE test.
@@ -65,7 +67,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## License and asset boundary
 
-The proposed MIT license applies only to the original source files in this repository.
+The MIT license applies only to the original source files in this repository.
 Unreal Engine and NVIDIA DLSS remain governed by their own licenses and must be obtained separately.
 No Unreal Engine source, third-party plugin implementation, marketplace asset, GTA/San Andreas
 asset, model, texture, animation, map, private project history or local configuration is included.
