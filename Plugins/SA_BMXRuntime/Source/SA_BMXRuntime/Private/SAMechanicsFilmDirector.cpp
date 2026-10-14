@@ -5,6 +5,7 @@
 #include "CineCameraActor.h"
 #include "CineCameraComponent.h"
 #include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Animation/AnimSequence.h"
 #include "EngineUtils.h"

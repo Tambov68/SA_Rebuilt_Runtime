@@ -2,7 +2,7 @@
 
 Experimental Unreal Engine C++ gameplay systems developed for SA_Rebuilt by Tambov68.
 This source edition is intended for learning, reuse and community contributions.
-It contains the runtime plugin, not the complete game or its asset library.
+It contains the runtime plugin and a primitive demo, not the complete game or its asset library.
 
 ## Features
 
@@ -28,7 +28,8 @@ Unset the variable for a build without DLSS. Restart build processes that were
 started before changing the environment; the value is a build-time option.
 
 The plugin contains no binary assets. You must supply your own meshes, collision,
-character, animation Blueprint and vehicle setup. Compilation alone does not create a playable demo.
+character, animation Blueprint and vehicle setup for a full integration.
+A native primitive demo is included: see [Demo/README.md](Demo/README.md).
 
 ## BMX integration contract
 
@@ -49,7 +50,7 @@ and mouse axes for looking. The implementation has state-dependent input behavio
 
 ## Current limitations
 
-- Experimental, project-specific code; no standalone sample scene is included yet.
+- Experimental, project-specific code; the included primitive demo has no animated rider or IK.
 - Rider animation integration uses named properties and reflection.
 - Vehicle interaction has fallback references to `/Game/Vehicles/F40/Animation/...`.
   Those animations are not distributed; assign your own animations through the component properties.
@@ -57,13 +58,14 @@ and mouse axes for looking. The implementation has state-dependent input behavio
 - Bicycle dimensions, support height and rider offsets are tuned for the original BMX;
   adapting a differently sized model requires checking these values and contacts.
 - Multiplayer, packaging and compatibility outside UE 5.8 are not verified.
-- The source edition diverges from the private plugin only in optional DLSS integration.
-  The public package has not received a fresh independent build or PIE test;
-  the compile guards and dependency declarations were checked statically.
+- The source edition includes optional DLSS integration and native demo classes absent from the private plugin.
+- Clean UE 5.8 `BuildPlugin` validation without DLSS: Editor Win64 Development,
+  UnrealGame Win64 Development and UnrealGame Win64 Shipping. Interactive demo PIE,
+  a complete packaged host game, and the DLSS-enabled configuration are not yet verified.
 
 ## Useful first contributions
 
-- [ ] Add a minimal sample using original primitive meshes and a documented character/AnimBP setup.
+- [ ] Extend the primitive demo with a clearly licensed animated rider and documented AnimBP/IK setup.
 - [ ] Validate both DLSS build configurations and the TSR photo-mode fallback in a clean host project.
 - [ ] Replace fixed component names and F40 asset paths with configurable references.
 - [ ] Document sockets, IK spaces and animation parameters with an integration example.
