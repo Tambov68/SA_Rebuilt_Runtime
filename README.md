@@ -2,7 +2,7 @@
 
 Experimental Unreal Engine C++ gameplay systems developed for SA_Rebuilt by Tambov68.
 This source edition is intended for learning, reuse and community contributions.
-It contains the runtime plugin and a primitive demo, not the complete game or its asset library.
+It contains the runtime plugin and a small BMX demo, not the complete game or its asset library.
 
 ## Features
 
@@ -27,9 +27,9 @@ For example, in PowerShell: `$env:SA_BMX_WITH_DLSS = '1'` before invoking the bu
 Unset the variable for a build without DLSS. Restart build processes that were
 started before changing the environment; the value is a build-time option.
 
-The plugin contains no binary assets. You must supply your own meshes, collision,
-character, animation Blueprint and vehicle setup for a full integration.
-A native primitive demo is included: see [Demo/README.md](Demo/README.md).
+The plugin itself contains no binary assets. The separate `Demo` host includes
+our BMX and Epic's template Manny: see [Demo/README.md](Demo/README.md) and
+[asset notices](Demo/ASSET_NOTICES.md). Rider animations and IK are not included yet.
 
 ## BMX integration contract
 
@@ -50,7 +50,7 @@ and mouse axes for looking. The implementation has state-dependent input behavio
 
 ## Current limitations
 
-- Experimental, project-specific code; the included primitive demo has no animated rider or IK.
+- Experimental, project-specific code; the included demo shows Manny in reference pose, without animated rider IK.
 - Rider animation integration uses named properties and reflection.
 - Vehicle interaction has fallback references to `/Game/Vehicles/F40/Animation/...`.
   Those animations are not distributed; assign your own animations through the component properties.
@@ -76,10 +76,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## License and asset boundary
 
-The MIT license applies only to the original source files in this repository.
+The MIT license applies to our original code and original BMX/demo assets.
+Epic template assets in `Demo/Content/Characters/Mannequins` are excluded from MIT;
+their provenance and governing terms are listed in `Demo/ASSET_NOTICES.md`.
 Unreal Engine and NVIDIA DLSS remain governed by their own licenses and must be obtained separately.
-No Unreal Engine source, third-party plugin implementation, marketplace asset, GTA/San Andreas
-asset, model, texture, animation, map, private project history or local configuration is included.
+No Unreal Engine source, third-party plugin implementation, paid marketplace asset,
+GTA/San Andreas asset, private project history or personal configuration is included.
 The complete private SA_Rebuilt repository is not a public distribution source.
 
 SA_Rebuilt is an independent project; this source edition does not claim affiliation
@@ -87,6 +89,6 @@ with Rockstar Games, Take-Two Interactive, Epic Games or NVIDIA.
 
 ---
 
-Русский: это исходный код собственного игрового плагина, а не готовая игра.
+Русский: это собственный игровой плагин и небольшое демо с нашим BMX и Manny, а не готовая игра.
 Полная рабочая версия и сторонние ассеты остаются приватными. Для запуска потребуются
 собственный проект UE 5.8 и настройка персонажа/Blueprint. DLSS необязателен.

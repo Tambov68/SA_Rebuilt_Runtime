@@ -7,6 +7,7 @@
 
 class UBMXInteractionComponent;
 class UStaticMeshComponent;
+class USkeletalMesh;
 
 /** Engine primitives only: no private project assets or animated rider. */
 UCLASS()
@@ -19,24 +20,27 @@ protected:
     virtual void PostInitializeComponents() override;
 };
 
-UCLASS()
+UCLASS(Config=Game)
 class SA_BMXRUNTIME_API ASADemoCharacter : public ACharacter
 {
     GENERATED_BODY()
 public:
     ASADemoCharacter();
     virtual void Tick(float DeltaSeconds) override;
+    virtual void BeginPlay() override;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<USkeletalMesh> DemoRiderMesh;
 private:
     UPROPERTY() TObjectPtr<UBMXInteractionComponent> Interaction;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Placeholder;
 };
 
 /** Select this as a blank map's GameMode override to spawn the demo at runtime. */
-UCLASS()
+UCLASS(Config=Game)
 class SA_BMXRUNTIME_API ASARuntimeDemoMode : public AGameModeBase
 {
     GENERATED_BODY()
 public:
     ASARuntimeDemoMode();
     virtual void StartPlay() override;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftClassPtr<AActor> DemoBikeClass;
 };

@@ -1,7 +1,16 @@
-# Primitive BMX demo
+# BMX demo with Manny
 
-This is a native runtime scene assembled from Unreal Engine's installed basic
-shapes. No game assets or engine assets are copied into this repository.
+The host project includes our black/gold BMX and Epic Games' template Manny.
+See [ASSET_NOTICES.md](ASSET_NOTICES.md) for authorship and license boundaries.
+The runtime also retains a primitive fallback for hosts without those assets.
+
+## Included host project
+
+Clone with Git LFS installed (`git lfs pull` if needed), then open
+`Demo/SA_RuntimeDemo.uproject` in UE 5.8. The plugin source lives in `../Plugins`,
+referenced through `AdditionalPluginDirectories`. Allow Unreal to compile the
+plugin using your installed C++ toolchain. The saved demo map and GameMode are
+already selected. Launch PIE yourself in the viewport.
 
 ## Run it in your own host project
 
@@ -11,7 +20,7 @@ shapes. No game assets or engine assets are copied into this repository.
 4. Add a Player Start at `(0, 0, 100)` centimetres, facing positive X.
 5. In World Settings, set **GameMode Override** to **SARuntimeDemoMode**.
 6. Save the level and start PIE in your chosen viewport.
-7. Walk toward the primitive bicycle, then press F to mount.
+7. Walk toward the bicycle, then press F to mount.
 
 The GameMode spawns the floor and bicycle at runtime. Stop PIE to remove those
 runtime actors. No map or private Blueprint is needed from SA_Rebuilt.
@@ -35,10 +44,11 @@ rider's head/neck and is not part of this placeholder demonstration.
 
 ## Scope and limits
 
-The rider is a simple box, with no skeletal mesh or IK animation. The demo uses
-the real runtime interaction and movement component, but simplified collision,
-solid disc wheels, and no art/material quality demonstration. It is an integration
-starting point, not a physically realistic bicycle simulator.
+The included host uses Manny's reference pose, without rider animation or IK.
+Do not expect the hands and feet to grip the bicycle yet. The demo uses real
+runtime interaction and movement; it is an integration starting point, not a
+physically realistic bicycle simulator. Without the configured rider/bike assets,
+the runtime falls back to a box character and primitive bicycle.
 
 The code uses transient copies of engine primitive meshes to attach sockets;
 the installed Engine assets are never saved or modified. Editor/Game compilation

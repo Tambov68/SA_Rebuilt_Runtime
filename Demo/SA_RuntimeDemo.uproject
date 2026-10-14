@@ -1,0 +1,10 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Description": "BMX runtime demo with Epic template Manny",
+  "AdditionalPluginDirectories": [ "../Plugins" ],
+  "Plugins": [
+    { "Name": "SA_BMXRuntime", "Enabled": true },
+    { "Name": "ChaosVehiclesPlugin", "Enabled": true }
+  ]
+}

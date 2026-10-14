@@ -2,6 +2,8 @@
 /Intermediate/
 /DerivedDataCache/
 /Binaries/
+**/Saved/
+**/DerivedDataCache/
 **/Intermediate/
 **/Binaries/
 .vs/

@@ -4,6 +4,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -100,6 +101,18 @@ ASADemoCharacter::ASADemoCharacter()
     Placeholder->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
+void ASADemoCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+    if(auto* Rider=DemoRiderMesh.LoadSynchronous())
+    {
+        GetMesh()->SetSkeletalMeshAsset(Rider);
+        GetMesh()->SetRelativeLocation(FVector(0,0,-90));
+        GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
+        Placeholder->SetVisibility(false);
+    }
+}
+
 void ASADemoCharacter::Tick(float DT)
 {
     Super::Tick(DT);
@@ -127,7 +140,9 @@ void ASARuntimeDemoMode::StartPlay()
     Ground->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
     Ground->SetCollisionProfileName(TEXT("BlockAll"));Ground->RegisterComponent();
     Floor->SetActorLocation(FVector(0,0,-10));Floor->SetActorScale3D(FVector(40,40,.2));
-    GetWorld()->SpawnActor<ASADemoBike>(FVector(170,0,54.55f),FRotator::ZeroRotator);
+    UClass* BikeClass=DemoBikeClass.LoadSynchronous();
+    if(!BikeClass) BikeClass=ASADemoBike::StaticClass();
+    GetWorld()->SpawnActor<AActor>(BikeClass,FVector(170,0,54.55f),FRotator::ZeroRotator);
     GetWorld()->SpawnActor<ADirectionalLight>(FVector(0,0,400),FRotator(-45,-30,0));
     Super::StartPlay();
 }
