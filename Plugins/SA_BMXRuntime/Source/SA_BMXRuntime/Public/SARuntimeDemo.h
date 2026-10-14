@@ -8,6 +8,7 @@
 class UBMXInteractionComponent;
 class UStaticMeshComponent;
 class USkeletalMesh;
+class UAnimInstance;
 
 /** Engine primitives only: no private project assets or animated rider. */
 UCLASS()
@@ -29,6 +30,7 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void BeginPlay() override;
     UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftObjectPtr<USkeletalMesh> DemoRiderMesh;
+    UPROPERTY(Config, EditAnywhere, Category="Demo") TSoftClassPtr<UAnimInstance> DemoRiderAnimClass;
 private:
     UPROPERTY() TObjectPtr<UBMXInteractionComponent> Interaction;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Placeholder;

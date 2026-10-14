@@ -50,6 +50,15 @@ runtime interaction and movement; it is an integration starting point, not a
 physically realistic bicycle simulator. Without the configured rider/bike assets,
 the runtime falls back to a box character and primitive bicycle.
 
+Hosts with their own compatible rider AnimBP can configure
+`DemoRiderAnimClass=/Game/YourAnimBP.YourAnimBP_C` under
+`[/Script/SA_BMXRuntime.SADemoCharacter]` in `Config/DefaultGame.ini`.
+The animation class must use the selected mesh's skeleton and expose the named
+IK parameters expected by `UpdateRiderIK`. Third-party animation packages are
+not bundled here. The bicycle's collision ignores the Camera trace channel,
+so it does not retract the demo spring arm into the rider; world obstacles
+still participate in camera collision.
+
 The code uses transient copies of engine primitive meshes to attach sockets;
 the installed Engine assets are never saved or modified. Editor/Game compilation
 results are recorded in the main README. Interactive PIE behavior must still be

@@ -111,6 +111,11 @@ void ASADemoCharacter::BeginPlay()
         GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
         Placeholder->SetVisibility(false);
     }
+    if(UClass* AnimClass=DemoRiderAnimClass.LoadSynchronous())
+    {
+        Interaction->RiderAnimClass=AnimClass;
+        GetMesh()->SetAnimInstanceClass(AnimClass);
+    }
 }
 
 void ASADemoCharacter::Tick(float DT)
@@ -142,7 +147,13 @@ void ASARuntimeDemoMode::StartPlay()
     Floor->SetActorLocation(FVector(0,0,-10));Floor->SetActorScale3D(FVector(40,40,.2));
     UClass* BikeClass=DemoBikeClass.LoadSynchronous();
     if(!BikeClass) BikeClass=ASADemoBike::StaticClass();
-    GetWorld()->SpawnActor<AActor>(BikeClass,FVector(170,0,54.55f),FRotator::ZeroRotator);
+    if(auto* Bike=GetWorld()->SpawnActor<AActor>(BikeClass,FVector(170,0,54.55f),FRotator::ZeroRotator))
+    {
+        // The rider's spring arm must not retract against the bicycle it is riding.
+        // Leave world collision intact so walls still shorten the camera arm.
+        TArray<UPrimitiveComponent*> Parts; Bike->GetComponents(Parts);
+        for(auto* Part:Parts) Part->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
+    }
     GetWorld()->SpawnActor<ADirectionalLight>(FVector(0,0,400),FRotator(-45,-30,0));
     Super::StartPlay();
 }
