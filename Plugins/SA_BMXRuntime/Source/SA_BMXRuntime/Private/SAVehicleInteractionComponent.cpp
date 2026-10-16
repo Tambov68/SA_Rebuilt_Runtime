@@ -10,6 +10,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
+#include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
@@ -38,6 +39,23 @@ void USAVehicleInteractionComponent::BeginPlay()
     if (!ExitAnimation) ExitAnimation=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Vehicles/F40/Animation/AS_F40_Exit_L.AS_F40_Exit_L"));
     if (!DrivingAnimation) DrivingAnimation=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Vehicles/F40/Animation/AS_F40_Drive.AS_F40_Drive"));
     if (!JumpAnimation) JumpAnimation=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Vehicles/F40/Animation/AS_F40_Jump_L.AS_F40_Jump_L"));
+    DefaultProfile.EnterAnimation=EnterAnimation;DefaultProfile.ExitAnimation=ExitAnimation;
+    DefaultProfile.DrivingAnimation=DrivingAnimation;DefaultProfile.JumpAnimation=JumpAnimation;
+    DefaultProfile.DoorOpenDegrees=DoorOpenDegrees;DefaultProfile.SteeringWheelDegrees=SteeringWheelDegrees;
+}
+void USAVehicleInteractionComponent::ApplyVehicleProfile(APawn* Vehicle)
+{
+    const FSAVehicleAnimationProfile* Profile=nullptr;
+    for(UClass* Class=Vehicle?Vehicle->GetClass():nullptr;Class&&Class->IsChildOf(APawn::StaticClass());Class=Class->GetSuperClass())
+        if((Profile=VehicleProfiles.Find(TSubclassOf<APawn>(Class))))break;
+    EnterAnimation=Profile&&Profile->EnterAnimation?Profile->EnterAnimation:DefaultProfile.EnterAnimation;
+    ExitAnimation=Profile&&Profile->ExitAnimation?Profile->ExitAnimation:DefaultProfile.ExitAnimation;
+    DrivingAnimation=Profile&&Profile->DrivingAnimation?Profile->DrivingAnimation:DefaultProfile.DrivingAnimation;
+    JumpAnimation=Profile&&Profile->JumpAnimation?Profile->JumpAnimation:DefaultProfile.JumpAnimation;
+    DoorOpenDegrees=FMath::Clamp(Profile?Profile->DoorOpenDegrees:DefaultProfile.DoorOpenDegrees,0.f,90.f);
+    SteeringWheelDegrees=FMath::Max(0.f,Profile?Profile->SteeringWheelDegrees:DefaultProfile.SteeringWheelDegrees);
+    ActiveSteeringAxis=Profile?Profile->SteeringAxis.GetSafeNormal():DefaultProfile.SteeringAxis.GetSafeNormal();
+    if(ActiveSteeringAxis.IsNearlyZero())ActiveSteeringAxis=DefaultProfile.SteeringAxis.GetSafeNormal();
 }
 void USAVehicleInteractionComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
@@ -64,12 +82,16 @@ bool USAVehicleInteractionComponent::DoorSpaceClear(APawn* Vehicle,int32 Side) c
     if (!Vehicle||!Character.IsValid()) return false;
     FCollisionQueryParams Q(SCENE_QUERY_STAT(SAVehicleDoor),false,Character.Get());Q.AddIgnoredActor(Vehicle);
     const FTransform T=Vehicle->GetActorTransform();
-    const FVector Hinge(66.5f,Side*73.f,50.f);
-    FVector Previous=T.TransformPosition(FVector(-30.f,Side*85.f,55.f));
+    FVector Hinge(66.5f,Side*73.f,50.f);float DoorLength=96.5f;
+    TArray<UStaticMeshComponent*> Parts;Vehicle->GetComponents(Parts);
+    const FString Prefix=Side<0?TEXT("Door_L"):TEXT("Door_R");
+    for(auto* Part:Parts)if(Part->GetName().StartsWith(Prefix)&&Part->GetStaticMesh())
+    { Hinge=Part->GetRelativeLocation();DoorLength=FMath::Max(50.f,-Part->GetStaticMesh()->GetBoundingBox().Min.X);break; }
+    FVector Previous=T.TransformPosition(Hinge+FVector(-DoorLength,Side*12.f,5.f));
     for (int32 I=1;I<=6;++I)
     {
         const FQuat R(FVector::UpVector,FMath::DegreesToRadians(-Side*DoorOpenDegrees*I/6.f));
-        const FVector P=T.TransformPosition(Hinge+R.RotateVector(FVector(-96.5f,Side*12.f,5.f)));
+        const FVector P=T.TransformPosition(Hinge+R.RotateVector(FVector(-DoorLength,Side*12.f,5.f)));
         FHitResult Hit;
         if (GetWorld()->SweepSingleByChannel(Hit,Previous,P,FQuat::Identity,ECC_Pawn,FCollisionShape::MakeSphere(12.f),Q)) return false;
         Previous=P;
@@ -149,6 +171,7 @@ bool USAVehicleInteractionComponent::TryEnter(APawn* Vehicle)
 {
     ACharacter* P=Character.Get();APlayerController* PC=P?Cast<APlayerController>(P->GetController()):nullptr;
     auto* M=IsValid(Vehicle)?Vehicle->FindComponentByClass<UChaosVehicleMovementComponent>():nullptr;
+    if(!bDriving&&IsValid(Vehicle))ApplyVehicleProfile(Vehicle);
     if (bDriving||!P||!PC||!PC->IsLocalController()||!PC->HasAuthority()||!M||!EnterAnimation||!DrivingAnimation)
     { LastStatus=TEXT("Vehicle entry prerequisites missing");return false; }
     if (Vehicle->GetController()||P->GetCharacterMovement()->MovementMode==MOVE_None||P->GetAttachParentActor())
@@ -387,5 +410,5 @@ void USAVehicleInteractionComponent::UpdateDrivingPose(float DeltaTime)
     SetDriverPose(DrivingAnimation,(VisualSteering+1.f)*.5f*DrivingAnimation->GetPlayLength());
     TArray<UStaticMeshComponent*> Parts;CurrentVehicle->GetComponents(Parts);
     for(auto* Part:Parts)if(Part->GetName().StartsWith(TEXT("F40_SteeringWheel")))
-        Part->SetRelativeRotation(FQuat(FVector(.804467f,.089021f,-.587289f).GetSafeNormal(),FMath::DegreesToRadians(VisualSteering*SteeringWheelDegrees)));
+        Part->SetRelativeRotation(FQuat(ActiveSteeringAxis,FMath::DegreesToRadians(VisualSteering*SteeringWheelDegrees)));
 }

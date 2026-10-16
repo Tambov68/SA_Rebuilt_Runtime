@@ -13,6 +13,19 @@ class UAnimSequence;
 class ACameraActor;
 class USceneComponent;
 
+USTRUCT(BlueprintType)
+struct SA_BMXRUNTIME_API FSAVehicleAnimationProfile
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Animation") TObjectPtr<UAnimSequence> EnterAnimation;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Animation") TObjectPtr<UAnimSequence> ExitAnimation;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Animation") TObjectPtr<UAnimSequence> DrivingAnimation;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Animation") TObjectPtr<UAnimSequence> JumpAnimation;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Geometry", meta=(ClampMin="0", ClampMax="90")) float DoorOpenDegrees=90.f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Geometry") FVector SteeringAxis=FVector(.804467f,.089021f,-.587289f);
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Geometry", meta=(ClampMin="0")) float SteeringWheelDegrees=45.f;
+};
+
 UENUM(BlueprintType)
 enum class ESAVehicleInteractionState : uint8 { OnFoot, Entering, Driving, Exiting, Jumping };
 
@@ -65,6 +78,9 @@ public:
     UFUNCTION(BlueprintCallable, Category="Vehicle|Jump") bool TryJumpOut();
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Vehicle|Animation") float VisualSteering=0.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vehicle|Animation") float SteeringWheelDegrees=45.f;
+    // Empty by default: vehicles without a profile keep the character's existing setup.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vehicle|Animation")
+    TMap<TSubclassOf<APawn>, FSAVehicleAnimationProfile> VehicleProfiles;
     // Called after the rider mesh has evaluated its current pose.
     void UpdateAnimationCamera();
 
@@ -74,6 +90,9 @@ protected:
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+    UPROPERTY(Transient) FSAVehicleAnimationProfile DefaultProfile;
+    FVector ActiveSteeringAxis=FVector(.804467f,.089021f,-.587289f);
+    void ApplyVehicleProfile(APawn* Vehicle);
     TWeakObjectPtr<ACharacter> Character;
     TWeakObjectPtr<APlayerController> DriverController;
     bool bDriving = false;
